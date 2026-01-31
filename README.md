@@ -62,6 +62,7 @@ task --list
 | `test:api:parse:tle` | Test TLE parse endpoint |
 | `test:api:parse:omm` | Test OMM parse endpoint |
 | `test:api:propagate:tle` | Test TLE propagate endpoint |
+| `test:api:propagate:range` | Test TLE propagate range endpoint |
 | `test:api:propagate:omm` | Test OMM propagate endpoint |
 | `test:api:utc-to-et` | Test UTC to ET conversion |
 | `test:api:et-to-utc` | Test ET to UTC conversion |
@@ -93,14 +94,46 @@ curl -X POST http://localhost:50000/api/spice/sgp4/parse \
   }'
 ```
 
-### Propagate TLE
+### Propagate (Unified Endpoint)
+
+The unified `/api/spice/sgp4/propagate` endpoint supports both TLE and OMM input formats via `input_type` parameter.
+
 ```bash
-curl -X POST http://localhost:50000/api/spice/sgp4/propagate \
+# Single time propagation (TLE input, default)
+curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00" \
   -H "Content-Type: application/json" \
   -d '{
     "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
-    "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
-    "time": "2024-01-15T12:00:00"
+    "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+  }'
+
+# Time range propagation (2 hours with 60-second steps)
+# Parameters: t0, tf (UTC), step (number), unit (sec|min), wgs (wgs72|wgs84), input_type (tle|omm)
+curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+    "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+  }'
+
+# Propagate with OMM input
+curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "omm": {
+      "OBJECT_NAME": "ISS (ZARYA)",
+      "OBJECT_ID": "1998-067A",
+      "EPOCH": "2024-01-15T12:00:00.000",
+      "MEAN_MOTION": 15.49560830,
+      "ECCENTRICITY": 0.0006703,
+      "INCLINATION": 51.6400,
+      "RA_OF_ASC_NODE": 208.9163,
+      "ARG_OF_PERICENTER": 30.0825,
+      "MEAN_ANOMALY": 330.0579,
+      "NORAD_CAT_ID": 25544,
+      "BSTAR": 0.00010270,
+      "MEAN_MOTION_DOT": 0.00016717
+    }
   }'
 ```
 

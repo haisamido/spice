@@ -134,16 +134,27 @@ tasks:
           }' | jq .
 
   test:api:propagate:tle:
-    desc: Test TLE propagate endpoint
+    desc: Test TLE propagate endpoint (single time)
     cmds:
-      - echo "=== Testing TLE Propagate Endpoint ==="
+      - echo "=== Testing TLE Propagate Endpoint (single time) ==="
       - |
-        curl -s -X POST {{.API_BASE}}/propagate \
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00" \
           -H "Content-Type: application/json" \
           -d '{
             "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
-            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
-            "time": "2024-01-15T12:00:00"
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  test:api:propagate:range:
+    desc: Test TLE propagate (2 hours, 60-sec step)
+    cmds:
+      - echo "=== Testing TLE Propagate (2 hours, 60-sec step) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
           }' | jq .
 
   test:api:utc-to-et:
@@ -181,12 +192,11 @@ tasks:
     cmds:
       - echo "=== Testing Propagate with WGS-84 ==="
       - |
-        curl -s -X POST "{{.API_BASE}}/propagate?model=wgs84" \
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&wgs=wgs84" \
           -H "Content-Type: application/json" \
           -d '{
             "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
-            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
-            "time": "2024-01-15T12:00:00"
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
           }' | jq .
 
   test:api:parse:omm:
@@ -212,11 +222,11 @@ tasks:
           }' | jq .
 
   test:api:propagate:omm:
-    desc: Test OMM propagate endpoint
+    desc: Test OMM propagate endpoint (via unified endpoint)
     cmds:
-      - echo "=== Testing OMM Propagate Endpoint ==="
+      - echo "=== Testing OMM Propagate (unified endpoint) ==="
       - |
-        curl -s -X POST {{.API_BASE}}/omm/propagate \
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm" \
           -H "Content-Type: application/json" \
           -d '{
             "omm": {
@@ -232,8 +242,7 @@ tasks:
               "NORAD_CAT_ID": 25544,
               "BSTAR": 0.00010270,
               "MEAN_MOTION_DOT": 0.00016717
-            },
-            "time": "2024-01-15T14:00:00"
+            }
           }' | jq .
 
   test:api:omm:to-tle:
@@ -277,6 +286,7 @@ tasks:
       - task: test:api:health
       - task: test:api:parse:tle
       - task: test:api:propagate:tle
+      - task: test:api:propagate:range
       - task: test:api:utc-to-et
       - task: test:api:et-to-utc
       - task: test:api:models

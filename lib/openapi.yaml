@@ -92,43 +92,95 @@ paths:
 
   /api/spice/sgp4/propagate:
     post:
-      summary: Propagate TLE
+      summary: Propagate TLE or OMM
       description: |
-        Propagate a TLE to a specific time and return the satellite state vector.
+        Unified propagation endpoint supporting both TLE and OMM input formats.
 
-        Time can be specified as:
-        - UTC string (e.g., "2024-01-15T12:00:00")
-        - Ephemeris time (number, seconds past J2000 TDB)
-        - Minutes from TLE epoch (with minutes_from_epoch: true)
+        **Single time mode**: Provide only `t0` to get one state vector at that time.
 
-        If no time is specified, propagates to the TLE epoch.
+        **Range mode**: Provide `t0`, `tf`, and `step` to get an array of state vectors
+        from t0 to tf at each step interval. Maximum of 10,000 points allowed per request.
+
+        **Input format**: Use `input_type=tle` (default) for TLE input or `input_type=omm` for OMM input.
       tags:
         - SGP4
       parameters:
-        - name: model
+        - name: t0
           in: query
-          description: Geophysical model to use (overrides body parameter)
+          required: true
+          description: Start time / single time (UTC string, e.g., "2024-01-15T12:00:00")
+          schema:
+            type: string
+        - name: tf
+          in: query
+          required: false
+          description: End time (UTC string). Required for range mode.
+          schema:
+            type: string
+        - name: step
+          in: query
+          required: false
+          description: Time step size. Required for range mode.
+          schema:
+            type: number
+        - name: unit
+          in: query
+          description: Time step unit (only used in range mode)
+          schema:
+            type: string
+            enum: [sec, min]
+            default: sec
+        - name: wgs
+          in: query
+          description: Geophysical model to use
           schema:
             type: string
             enum: [wgs72, wgs84]
             default: wgs72
+        - name: input_type
+          in: query
+          description: Input format type
+          schema:
+            type: string
+            enum: [tle, omm]
+            default: tle
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PropagateInput'
-            example:
-              line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
-              line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
-              time: "2024-01-15T12:00:00"
+              oneOf:
+                - $ref: '#/components/schemas/TLEInput'
+                - $ref: '#/components/schemas/OMMPropagateInput'
+            examples:
+              tle:
+                summary: TLE input
+                value:
+                  line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
+                  line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+              omm:
+                summary: OMM input
+                value:
+                  omm:
+                    OBJECT_NAME: "ISS (ZARYA)"
+                    OBJECT_ID: "1998-067A"
+                    EPOCH: "2024-01-15T12:00:00.000"
+                    MEAN_MOTION: 15.49560830
+                    ECCENTRICITY: 0.0006703
+                    INCLINATION: 51.6400
+                    RA_OF_ASC_NODE: 208.9163
+                    ARG_OF_PERICENTER: 30.0825
+                    MEAN_ANOMALY: 330.0579
+                    NORAD_CAT_ID: 25544
+                    BSTAR: 0.00010270
+                    MEAN_MOTION_DOT: 0.00016717
       responses:
         '200':
-          description: Successfully propagated TLE
+          description: Successfully propagated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PropagateResponse'
+                $ref: '#/components/schemas/PropagateRangeResponse'
         '400':
           description: Missing or invalid parameters
           content:
@@ -172,48 +224,6 @@ paths:
                 $ref: '#/components/schemas/OMMParseResponse'
         '400':
           description: Missing or invalid OMM fields
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/spice/sgp4/omm/propagate:
-    post:
-      summary: Propagate OMM
-      description: |
-        Propagate an OMM to a specific time and return the satellite state vector.
-
-        Time can be specified as:
-        - UTC string (e.g., "2024-01-15T12:00:00")
-        - Ephemeris time (number, seconds past J2000 TDB)
-        - Minutes from epoch (with minutes_from_epoch: true)
-
-        If no time is specified, propagates to the OMM epoch.
-      tags:
-        - OMM
-      parameters:
-        - name: model
-          in: query
-          description: Geophysical model to use
-          schema:
-            type: string
-            enum: [wgs72, wgs84]
-            default: wgs72
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OMMPropagateInput'
-      responses:
-        '200':
-          description: Successfully propagated OMM
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PropagateResponse'
-        '400':
-          description: Missing or invalid parameters
           content:
             application/json:
               schema:
@@ -477,6 +487,46 @@ components:
           type: string
           description: Geophysical model used
 
+    PropagateRangeResponse:
+      type: object
+      properties:
+        states:
+          type: array
+          items:
+            type: object
+            properties:
+              time:
+                type: string
+                description: UTC time string
+              et:
+                type: number
+                description: Ephemeris time (seconds past J2000 TDB)
+              position:
+                $ref: '#/components/schemas/Position'
+              velocity:
+                $ref: '#/components/schemas/Velocity'
+        epoch:
+          type: number
+          description: TLE epoch (seconds past J2000 TDB)
+        model:
+          type: string
+          description: Geophysical model used
+        count:
+          type: integer
+          description: Number of state vectors returned
+        t0:
+          type: string
+          description: Start time
+        tf:
+          type: string
+          description: End time
+        step:
+          type: number
+          description: Time step
+        unit:
+          type: string
+          description: Time step unit (sec or min)
+
     UTCtoETResponse:
       type: object
       properties:
@@ -641,20 +691,6 @@ components:
       properties:
         omm:
           $ref: '#/components/schemas/OMMInput'
-        time:
-          oneOf:
-            - type: string
-              description: UTC time string
-            - type: number
-              description: Ephemeris time or minutes from epoch
-        minutes_from_epoch:
-          type: boolean
-          description: If true, treat numeric time as minutes from epoch
-          default: false
-        model:
-          type: string
-          description: Geophysical model (wgs72 or wgs84)
-          enum: [wgs72, wgs84]
 
     OMMParseResponse:
       type: object

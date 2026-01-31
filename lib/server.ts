@@ -123,30 +123,37 @@ app.post(
 
 /**
  * POST /api/spice/sgp4/propagate
- * Propagate TLE to a specific time
+ * Unified propagation endpoint for TLE or OMM input
  *
- * Query: ?model=wgs84 (optional, default: wgs72)
- * Body: { line1: string, line2: string, time: string | number, model?: string }
- *   time can be:
- *   - UTC string (e.g., "2024-01-15T12:00:00")
- *   - Ephemeris time (number)
- *   - Minutes from epoch (if minutes_from_epoch: true)
+ * Query: ?t0=<UTC>[&tf=<UTC>&step=<number>&unit=sec|min][&wgs=wgs72|wgs84][&input_type=tle|omm]
+ * Body for TLE (default): { line1: string, line2: string }
+ * Body for OMM: { omm: OMMData }
  *
- * Returns: { position: {x,y,z}, velocity: {vx,vy,vz}, epoch: number, model: string }
+ * If only t0 is provided: returns single state at t0
+ * If t0, tf, step provided: returns array of states from t0 to tf
  */
 app.post(
   '/api/spice/sgp4/propagate',
   asyncHandler(async (req: Request, res: Response) => {
-    const { line1, line2, time, minutes_from_epoch, model: bodyModel } = req.body;
-    const queryModel = req.query.model as string | undefined;
+    const t0 = req.query.t0 as string | undefined;
+    const tf = req.query.tf as string | undefined;
+    const stepStr = req.query.step as string | undefined;
+    const unit = (req.query.unit as string) || 'sec';
+    const queryModel = req.query.wgs as string | undefined;
+    const inputType = (req.query.input_type as string) || 'tle';
 
-    if (!line1 || !line2) {
-      res.status(400).json({ error: 'Missing line1 or line2' });
+    if (!t0) {
+      res.status(400).json({ error: 'Missing t0 query parameter' });
       return;
     }
 
-    // Model selection: query param > body param > default
-    const modelName = queryModel || bodyModel || DEFAULT_MODEL;
+    if (inputType !== 'tle' && inputType !== 'omm') {
+      res.status(400).json({ error: 'Invalid input_type (must be tle or omm)' });
+      return;
+    }
+
+    // Model selection
+    const modelName = queryModel || DEFAULT_MODEL;
     const constants = getWgsConstants(modelName);
 
     if (!constants) {
@@ -154,32 +161,123 @@ app.post(
       return;
     }
 
-    // Set geophysical constants for this propagation
     sgp4.setGeophysicalConstants(constants, modelName);
 
-    const tle = sgp4.parseTLE(line1, line2);
-    let state;
-
-    if (minutes_from_epoch && typeof time === 'number') {
-      // Propagate minutes from TLE epoch
-      state = sgp4.propagateMinutes(tle, time);
-    } else if (typeof time === 'string') {
-      // Convert UTC to ET and propagate
-      const et = sgp4.utcToET(time);
-      state = sgp4.propagate(tle, et);
-    } else if (typeof time === 'number') {
-      // Use ET directly
-      state = sgp4.propagate(tle, time);
+    // Parse input based on input_type
+    let tle;
+    if (inputType === 'omm') {
+      const { omm } = req.body;
+      if (!omm) {
+        res.status(400).json({ error: 'Missing omm object in request body' });
+        return;
+      }
+      try {
+        validateOMM(omm);
+      } catch (err) {
+        res.status(400).json({ error: (err as Error).message });
+        return;
+      }
+      const tleOutput = ommToTLE(omm as OMMData);
+      tle = sgp4.parseTLE(tleOutput.line1, tleOutput.line2);
     } else {
-      // Default: propagate to TLE epoch
-      state = sgp4.propagate(tle, tle.epoch);
+      const { line1, line2 } = req.body;
+      if (!line1 || !line2) {
+        res.status(400).json({ error: 'Missing line1 or line2' });
+        return;
+      }
+      tle = sgp4.parseTLE(line1, line2);
+    }
+
+    const et0 = sgp4.utcToET(t0);
+
+    // Single time mode: only t0 provided
+    if (!tf && !stepStr) {
+      const state = sgp4.propagate(tle, et0);
+      const utc = sgp4.etToUTC(et0);
+      res.json({
+        states: [
+          {
+            time: utc,
+            et: et0,
+            position: state.position,
+            velocity: state.velocity,
+          },
+        ],
+        epoch: tle.epoch,
+        model: modelName,
+        count: 1,
+        t0,
+        input_type: inputType,
+      });
+      return;
+    }
+
+    // Range mode: t0, tf, step all required
+    if (!tf || !stepStr) {
+      res.status(400).json({ error: 'For range mode, both tf and step are required' });
+      return;
+    }
+
+    const step = parseFloat(stepStr);
+    if (isNaN(step) || step <= 0) {
+      res.status(400).json({ error: 'Invalid step value (must be positive number)' });
+      return;
+    }
+
+    if (unit !== 'sec' && unit !== 'min') {
+      res.status(400).json({ error: 'Invalid unit (must be sec or min)' });
+      return;
+    }
+
+    const etf = sgp4.utcToET(tf);
+
+    if (etf <= et0) {
+      res.status(400).json({ error: 'tf must be greater than t0' });
+      return;
+    }
+
+    // Convert step to seconds
+    const stepSeconds = unit === 'min' ? step * 60 : step;
+
+    // Limit number of points to prevent memory issues
+    const maxPoints = 10000;
+    const estimatedPoints = Math.ceil((etf - et0) / stepSeconds) + 1;
+    if (estimatedPoints > maxPoints) {
+      res.status(400).json({
+        error: `Too many points (${estimatedPoints}). Maximum allowed is ${maxPoints}. Increase step size.`,
+      });
+      return;
+    }
+
+    // Propagate over time range
+    const states: Array<{
+      time: string;
+      et: number;
+      position: { x: number; y: number; z: number };
+      velocity: { vx: number; vy: number; vz: number };
+    }> = [];
+
+    for (let et = et0; et <= etf; et += stepSeconds) {
+      const state = sgp4.propagate(tle, et);
+      const utc = sgp4.etToUTC(et);
+      states.push({
+        time: utc,
+        et: et,
+        position: state.position,
+        velocity: state.velocity,
+      });
     }
 
     res.json({
-      position: state.position,
-      velocity: state.velocity,
+      states,
       epoch: tle.epoch,
       model: modelName,
+      count: states.length,
+      t0,
+      tf,
+      step,
+      unit,
+      input_type: inputType,
     });
   })
 );
@@ -283,70 +381,6 @@ app.post(
 );
 
 /**
- * POST /api/spice/sgp4/omm/propagate
- * Propagate OMM to a specific time
- *
- * Query: ?model=wgs84 (optional, default: wgs72)
- * Body: { omm: OMMData, time?: string | number, minutes_from_epoch?: boolean }
- * Returns: { position: {x,y,z}, velocity: {vx,vy,vz}, epoch: number, model: string }
- */
-app.post(
-  '/api/spice/sgp4/omm/propagate',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { omm, time, minutes_from_epoch, model: bodyModel } = req.body;
-    const queryModel = req.query.model as string | undefined;
-
-    if (!omm) {
-      res.status(400).json({ error: 'Missing omm object in request body' });
-      return;
-    }
-
-    try {
-      validateOMM(omm);
-    } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
-      return;
-    }
-
-    // Model selection: query param > body param > default
-    const modelName = queryModel || bodyModel || DEFAULT_MODEL;
-    const constants = getWgsConstants(modelName);
-
-    if (!constants) {
-      res.status(400).json({ error: `Unknown model: ${modelName}` });
-      return;
-    }
-
-    // Set geophysical constants for this propagation
-    sgp4.setGeophysicalConstants(constants, modelName);
-
-    // Convert OMM to TLE
-    const tleOutput = ommToTLE(omm as OMMData);
-
-    const tle = sgp4.parseTLE(tleOutput.line1, tleOutput.line2);
-    let state;
-
-    if (minutes_from_epoch && typeof time === 'number') {
-      state = sgp4.propagateMinutes(tle, time);
-    } else if (typeof time === 'string') {
-      const et = sgp4.utcToET(time);
-      state = sgp4.propagate(tle, et);
-    } else if (typeof time === 'number') {
-      state = sgp4.propagate(tle, time);
-    } else {
-      state = sgp4.propagate(tle, tle.epoch);
-    }
-
-    res.json({
-      position: state.position,
-      velocity: state.velocity,
-      epoch: tle.epoch,
-      model: modelName,
-    });
-  })
-);
-
-/**
  * POST /api/spice/sgp4/omm/to-tle
  * Convert OMM JSON to TLE format
  *
@@ -438,17 +472,16 @@ initSGP4()
       console.log(`OpenAPI Spec:      http://localhost:${PORT}/api/openapi.json`);
       console.log(``);
       console.log(`Endpoints:`);
-      console.log(`  POST /api/spice/sgp4/parse        - Parse TLE`);
-      console.log(`  POST /api/spice/sgp4/propagate    - Propagate TLE`);
-      console.log(`  POST /api/spice/sgp4/omm/parse    - Parse OMM JSON`);
-      console.log(`  POST /api/spice/sgp4/omm/propagate - Propagate OMM`);
-      console.log(`  POST /api/spice/sgp4/omm/to-tle   - Convert OMM to TLE`);
-      console.log(`  POST /api/spice/sgp4/tle/to-omm   - Convert TLE to OMM`);
+      console.log(`  POST /api/spice/sgp4/parse       - Parse TLE`);
+      console.log(`  POST /api/spice/sgp4/propagate   - Propagate TLE/OMM (input_type=tle|omm)`);
+      console.log(`  POST /api/spice/sgp4/omm/parse   - Parse OMM JSON`);
+      console.log(`  POST /api/spice/sgp4/omm/to-tle  - Convert OMM to TLE`);
+      console.log(`  POST /api/spice/sgp4/tle/to-omm  - Convert TLE to OMM`);
       console.log(`  GET  /api/spice/sgp4/time/utc-to-et - Convert UTC to ET`);
       console.log(`  GET  /api/spice/sgp4/time/et-to-utc - Convert ET to UTC`);
-      console.log(`  GET  /api/spice/sgp4/health       - Health check`);
-      console.log(`  GET  /api/models/                 - List models`);
-      console.log(`  GET  /api/models/wgs/:name        - Get WGS model details`);
+      console.log(`  GET  /api/spice/sgp4/health      - Health check`);
+      console.log(`  GET  /api/models/                - List models`);
+      console.log(`  GET  /api/models/wgs/:name       - Get WGS model details`);
       console.log(``);
       console.log(`Press Ctrl+C to stop the server`);
     });
