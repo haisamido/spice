@@ -96,4 +96,4 @@ task docker:start CONTAINER_BIN=podman
 
 ## License
 
-MIT
+[GPL-3.0](LICENSE)
