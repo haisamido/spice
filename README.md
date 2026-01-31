@@ -2,6 +2,17 @@
 
 This project provides NASA/JPL NAIF CSPICE functionality compiled to WebAssembly.
 
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Prerequisites](#prerequisites)
+- [Available Tasks](#available-tasks)
+- [API Documentation](#api-documentation)
+- [REST API Endpoints](#rest-api-endpoints)
+- [Configuration](#configuration)
+- [Architecture](docs/architecture.md) - System design, ERD, and sequence diagrams
+- [License](#license)
+
 ## SPICE: SGP4-WASM
 
 Current work: SGP4 satellite orbit propagation using CSPICE compiled to WebAssembly.
