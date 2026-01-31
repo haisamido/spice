@@ -112,7 +112,7 @@ COPY --from=wasm-build /wasm-build/sgp4.wasm ./dist/
 # Copy TypeScript source, tests, examples, data, and config
 COPY tsconfig.json ./
 COPY lib/ ./lib/
-COPY test/ ./test/
+COPY tests/ ./tests/
 COPY examples/ ./examples/
 COPY data/ ./data/
 
