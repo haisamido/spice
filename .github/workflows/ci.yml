@@ -18,11 +18,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        run: docker compose build sgp4-api
+      - name: Build container image
+        run: docker compose build spice-api
 
       - name: Run unit tests
-        run: docker run --rm sgp4-wasm-builder:latest npm test
+        run: docker run --rm spice-builder:latest npm test
 
       - name: Start server
         run: |

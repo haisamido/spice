@@ -4,12 +4,12 @@ stages:
   - publish
 
 variables:
-  CONTAINER_IMAGE: sgp4-wasm-builder
+  CONTAINER_IMAGE: spice-builder
   CONTAINER_TAG: latest
   REGISTRY: $CI_REGISTRY
   IMAGE_NAME: $CI_REGISTRY_IMAGE
 
-# Build the Docker image
+# Build the container image
 build:
   stage: build
   image: docker:latest
@@ -18,7 +18,7 @@ build:
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   script:
-    - docker compose build sgp4-api
+    - docker compose build spice-api
     - docker save ${CONTAINER_IMAGE}:${CONTAINER_TAG} > image.tar
   artifacts:
     paths:
@@ -112,7 +112,7 @@ test:api:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web"
 
-# Publish Docker image to GitLab Container Registry
+# Publish container image to GitLab Container Registry
 publish:
   stage: publish
   image: docker:latest

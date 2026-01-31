@@ -1,4 +1,4 @@
-name: Publish Docker Image
+name: Publish Container Image
 
 on:
   push:
@@ -39,10 +39,11 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
 
-      - name: Build and push Docker image
+      - name: Build and push container image
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Containerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
