@@ -1,0 +1,136 @@
+stages:
+  - build
+  - test
+  - publish
+
+variables:
+  CONTAINER_IMAGE: sgp4-wasm-builder
+  CONTAINER_TAG: latest
+  REGISTRY: $CI_REGISTRY
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+
+# Build the Docker image
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - docker compose build sgp4-api
+    - docker save ${CONTAINER_IMAGE}:${CONTAINER_TAG} > image.tar
+  artifacts:
+    paths:
+      - image.tar
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Run unit tests
+test:unit:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  needs:
+    - build
+  script:
+    - docker load < image.tar
+    - docker run --rm ${CONTAINER_IMAGE}:${CONTAINER_TAG} npm test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Run API tests
+test:api:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  needs:
+    - build
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - docker load < image.tar
+    - docker compose up -d
+    - sleep 5
+
+    # Health check
+    - curl -sf http://docker:50000/api/spice/sgp4/health | jq .
+
+    # Parse TLE
+    - |
+      curl -sf -X POST http://docker:50000/api/spice/sgp4/parse \
+        -H "Content-Type: application/json" \
+        -d '{
+          "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+          "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+        }' | jq .
+
+    # Propagate TLE
+    - |
+      curl -sf -X POST http://docker:50000/api/spice/sgp4/propagate \
+        -H "Content-Type: application/json" \
+        -d '{
+          "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+          "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
+          "time": "2024-01-15T12:00:00"
+        }' | jq .
+
+    # Time conversions
+    - curl -sf "http://docker:50000/api/spice/sgp4/time/utc-to-et?utc=2024-01-15T12:00:00" | jq .
+    - curl -sf "http://docker:50000/api/spice/sgp4/time/et-to-utc?et=758894469.184" | jq .
+
+    # Models API
+    - curl -sf http://docker:50000/api/models/ | jq .
+    - curl -sf http://docker:50000/api/models/wgs/wgs72 | jq .
+    - curl -sf http://docker:50000/api/models/wgs/wgs84 | jq .
+
+    # Propagate with WGS-84
+    - |
+      curl -sf -X POST "http://docker:50000/api/spice/sgp4/propagate?model=wgs84" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+          "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
+          "time": "2024-01-15T12:00:00"
+        }' | jq .
+  after_script:
+    - docker compose logs || true
+    - docker compose down -v || true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Publish Docker image to GitLab Container Registry
+publish:
+  stage: publish
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  needs:
+    - test:unit
+    - test:api
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker load < image.tar
+    - docker tag ${CONTAINER_IMAGE}:${CONTAINER_TAG} ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}
+    - docker tag ${CONTAINER_IMAGE}:${CONTAINER_TAG} ${IMAGE_NAME}:latest
+    - docker push ${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}
+    - docker push ${IMAGE_NAME}:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
