@@ -20,19 +20,6 @@ const __dirname = dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// Load OpenAPI spec and serve Swagger UI
-const openapiPath = join(__dirname, 'openapi.yaml');
-const openapiSpec = YAML.load(openapiPath);
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
-  customSiteTitle: 'SPICE SGP4 API',
-  customCss: '.swagger-ui .topbar { display: none }'
-}));
-
-// Serve OpenAPI spec as JSON
-app.get('/api/openapi.json', (_req: Request, res: Response) => {
-  res.json(openapiSpec);
-});
-
 let sgp4: SGP4Module;
 
 // Server identification
@@ -78,6 +65,19 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 app.use(requestLogger);
+
+// Load OpenAPI spec and serve Swagger UI
+const openapiPath = join(__dirname, 'openapi.yaml');
+const openapiSpec = YAML.load(openapiPath);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
+  customSiteTitle: 'SPICE SGP4 API',
+  customCss: '.swagger-ui .topbar { display: none }'
+}));
+
+// Serve OpenAPI spec as JSON
+app.get('/api/openapi.json', (_req: Request, res: Response) => {
+  res.json(openapiSpec);
+});
 
 // Initialize SGP4 module
 async function initSGP4(): Promise<void> {

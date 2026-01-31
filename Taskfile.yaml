@@ -60,7 +60,7 @@ tasks:
   container:start:
     desc: Build and start the REST API server (detached)
     cmds:
-      - "{{.CONTAINER_BIN}} compose up -d --build"
+      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose up -d --build"
       - echo "Waiting for server to start..."
       - sleep 3
       - echo ""
@@ -74,7 +74,7 @@ tasks:
     deps:
       - container:pull
     cmds:
-      - "{{.CONTAINER_BIN}} compose up -d"
+      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose up -d"
       - echo "Waiting for server to start..."
       - sleep 3
       - echo ""
@@ -87,6 +87,12 @@ tasks:
     desc: Stop and remove the REST API server container
     cmds:
       - "{{.CONTAINER_BIN}} compose down -v"
+
+  container:restart:
+    desc: Stop and restart the REST API server
+    cmds:
+      - task: container:stop
+      - task: container:start
 
   container:logs:
     desc: View logs from the running REST API server
