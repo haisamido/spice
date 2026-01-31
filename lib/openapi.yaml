@@ -1,0 +1,410 @@
+openapi: 3.0.3
+info:
+  title: SPICE SGP4 API
+  description: |
+    REST API for SGP4 satellite orbit propagation using NASA/JPL NAIF CSPICE compiled to WebAssembly.
+
+    ## Features
+    - Parse Two-Line Element (TLE) sets into orbital elements
+    - Propagate satellite state to any epoch
+    - Convert between UTC and Ephemeris Time
+    - Support for WGS-72 and WGS-84 geophysical models
+
+    ## Reference Frames
+    All position and velocity outputs are in the TEME (True Equator Mean Equinox) reference frame,
+    which is the standard frame for SGP4 propagation.
+  version: 1.0.0
+  license:
+    name: GPL-3.0
+    url: https://www.gnu.org/licenses/gpl-3.0.html
+  contact:
+    name: GitHub Repository
+    url: https://github.com/haisamido/spice
+
+servers:
+  - url: http://localhost:50000
+    description: Local development server
+
+tags:
+  - name: SGP4
+    description: Satellite propagation endpoints
+  - name: Time
+    description: Time conversion endpoints
+  - name: Models
+    description: Geophysical model endpoints
+
+paths:
+  /api/spice/sgp4/health:
+    get:
+      summary: Health check
+      description: Check if the API server is running and the SGP4 module is initialized.
+      tags:
+        - SGP4
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                initialized: true
+
+  /api/spice/sgp4/parse:
+    post:
+      summary: Parse TLE
+      description: |
+        Parse a Two-Line Element (TLE) set into orbital elements.
+        Returns the epoch and 10-element array used by the SGP4 propagator.
+      tags:
+        - SGP4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TLEInput'
+            example:
+              line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
+              line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+      responses:
+        '200':
+          description: Successfully parsed TLE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseResponse'
+        '400':
+          description: Missing or invalid TLE lines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/propagate:
+    post:
+      summary: Propagate TLE
+      description: |
+        Propagate a TLE to a specific time and return the satellite state vector.
+
+        Time can be specified as:
+        - UTC string (e.g., "2024-01-15T12:00:00")
+        - Ephemeris time (number, seconds past J2000 TDB)
+        - Minutes from TLE epoch (with minutes_from_epoch: true)
+
+        If no time is specified, propagates to the TLE epoch.
+      tags:
+        - SGP4
+      parameters:
+        - name: model
+          in: query
+          description: Geophysical model to use (overrides body parameter)
+          schema:
+            type: string
+            enum: [wgs72, wgs84]
+            default: wgs72
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropagateInput'
+            example:
+              line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
+              line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+              time: "2024-01-15T12:00:00"
+      responses:
+        '200':
+          description: Successfully propagated TLE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropagateResponse'
+        '400':
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/time/utc-to-et:
+    get:
+      summary: Convert UTC to Ephemeris Time
+      description: |
+        Convert a UTC time string to Ephemeris Time (ET).
+        ET is measured in seconds past J2000 TDB (Barycentric Dynamical Time).
+      tags:
+        - Time
+      parameters:
+        - name: utc
+          in: query
+          required: true
+          description: UTC time string (e.g., "2024-01-15T12:00:00")
+          schema:
+            type: string
+          example: "2024-01-15T12:00:00"
+      responses:
+        '200':
+          description: Successfully converted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UTCtoETResponse'
+        '400':
+          description: Missing or invalid UTC parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/time/et-to-utc:
+    get:
+      summary: Convert Ephemeris Time to UTC
+      description: |
+        Convert Ephemeris Time (ET) to a UTC time string.
+        ET is measured in seconds past J2000 TDB.
+      tags:
+        - Time
+      parameters:
+        - name: et
+          in: query
+          required: true
+          description: Ephemeris time in seconds past J2000 TDB
+          schema:
+            type: number
+          example: 758894469.184
+      responses:
+        '200':
+          description: Successfully converted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ETtoUTCResponse'
+        '400':
+          description: Missing or invalid ET parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/models/:
+    get:
+      summary: List available models
+      description: Get a list of all available geophysical models.
+      tags:
+        - Models
+      responses:
+        '200':
+          description: List of models
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelsListResponse'
+
+  /api/models/wgs/{name}:
+    get:
+      summary: Get model details
+      description: Get detailed information about a specific WGS geophysical model.
+      tags:
+        - Models
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Model name
+          schema:
+            type: string
+            enum: [wgs72, wgs84]
+          example: wgs72
+      responses:
+        '200':
+          description: Model details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeophysicalModel'
+        '404':
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    TLEInput:
+      type: object
+      required:
+        - line1
+        - line2
+      properties:
+        line1:
+          type: string
+          description: TLE line 1 (69 characters)
+        line2:
+          type: string
+          description: TLE line 2 (69 characters)
+
+    PropagateInput:
+      type: object
+      required:
+        - line1
+        - line2
+      properties:
+        line1:
+          type: string
+          description: TLE line 1 (69 characters)
+        line2:
+          type: string
+          description: TLE line 2 (69 characters)
+        time:
+          oneOf:
+            - type: string
+              description: UTC time string
+            - type: number
+              description: Ephemeris time or minutes from epoch
+        minutes_from_epoch:
+          type: boolean
+          description: If true, treat numeric time as minutes from TLE epoch
+          default: false
+        model:
+          type: string
+          description: Geophysical model (wgs72 or wgs84)
+          enum: [wgs72, wgs84]
+
+    Position:
+      type: object
+      properties:
+        x:
+          type: number
+          description: X coordinate (km)
+        y:
+          type: number
+          description: Y coordinate (km)
+        z:
+          type: number
+          description: Z coordinate (km)
+
+    Velocity:
+      type: object
+      properties:
+        vx:
+          type: number
+          description: X velocity (km/s)
+        vy:
+          type: number
+          description: Y velocity (km/s)
+        vz:
+          type: number
+          description: Z velocity (km/s)
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        initialized:
+          type: boolean
+
+    ParseResponse:
+      type: object
+      properties:
+        epoch:
+          type: number
+          description: Epoch as ephemeris time (seconds past J2000 TDB)
+        elements:
+          type: array
+          items:
+            type: number
+          description: 10-element orbital elements array
+
+    PropagateResponse:
+      type: object
+      properties:
+        position:
+          $ref: '#/components/schemas/Position'
+        velocity:
+          $ref: '#/components/schemas/Velocity'
+        epoch:
+          type: number
+          description: TLE epoch (seconds past J2000 TDB)
+        model:
+          type: string
+          description: Geophysical model used
+
+    UTCtoETResponse:
+      type: object
+      properties:
+        et:
+          type: number
+          description: Ephemeris time (seconds past J2000 TDB)
+
+    ETtoUTCResponse:
+      type: object
+      properties:
+        utc:
+          type: string
+          description: UTC time string
+
+    ModelsListResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            type: string
+        default:
+          type: string
+
+    GeophysicalConstants:
+      type: object
+      properties:
+        J2:
+          type: number
+          description: J2 gravitational harmonic
+        J3:
+          type: number
+          description: J3 gravitational harmonic
+        J4:
+          type: number
+          description: J4 gravitational harmonic
+        KE:
+          type: number
+          description: sqrt(GM) in earth-radii^(3/2) / minute
+        QO:
+          type: number
+          description: Atmospheric model parameter (km)
+        SO:
+          type: number
+          description: Atmospheric model parameter (km)
+        RE:
+          type: number
+          description: Earth equatorial radius (km)
+        AE:
+          type: number
+          description: Distance units per Earth radius
+
+    GeophysicalModel:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        source:
+          type: string
+        constants:
+          $ref: '#/components/schemas/GeophysicalConstants'
+        units:
+          type: object
+          additionalProperties:
+            type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message

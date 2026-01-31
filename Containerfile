@@ -116,8 +116,8 @@ COPY test/ ./test/
 COPY examples/ ./examples/
 COPY data/ ./data/
 
-# Compile TypeScript
-RUN npm run build:ts && \
+# Compile TypeScript and copy assets
+RUN npm run build && \
     echo "Build complete:" && \
     ls -lh dist/
 

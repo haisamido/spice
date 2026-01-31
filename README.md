@@ -52,6 +52,13 @@ task --list
 | `test:api:et-to-utc` | Test ET to UTC conversion |
 | `test:api:all` | Run all API tests (server must be running) |
 
+## API Documentation
+
+Interactive API documentation is available when the server is running:
+
+- **Swagger UI**: <http://localhost:50000/api/docs>
+- **OpenAPI Spec (JSON)**: <http://localhost:50000/api/openapi.json>
+
 ## REST API Endpoints
 
 ### Health Check

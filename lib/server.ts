@@ -1,17 +1,37 @@
 /**
- * SGP4-WASM REST API Server
+ * SPICE SGP4 REST API Server
  *
  * Provides RESTful endpoints for SGP4 satellite propagation.
  */
 
 import express, { Request, Response, NextFunction } from 'express';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { createSGP4, type SGP4Module } from './index.js';
 import { getAllModels, getWgsModel, getWgsConstants, DEFAULT_MODEL } from './models.js';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
 app.use(express.json());
+
+// Load OpenAPI spec and serve Swagger UI
+const openapiPath = join(__dirname, 'openapi.yaml');
+const openapiSpec = YAML.load(openapiPath);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
+  customSiteTitle: 'SPICE SGP4 API',
+  customCss: '.swagger-ui .topbar { display: none }'
+}));
+
+// Serve OpenAPI spec as JSON
+app.get('/api/openapi.json', (_req: Request, res: Response) => {
+  res.json(openapiSpec);
+});
 
 let sgp4: SGP4Module;
 
@@ -257,13 +277,14 @@ const PORT = process.env.PORT || 3000;
 initSGP4()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`=== SGP4-WASM REST API Server ===`);
-      console.log(`Open http://localhost:${PORT}/api/spice/sgp4/health in your browser`);
-      console.log(`Press Ctrl+C to stop the server`);
+      console.log(`=== SPICE SGP4 REST API Server ===`);
+      console.log(`Serving on http://0.0.0.0:${PORT}`);
       console.log(``);
       console.log(`Git commit: ${GIT_HASH}`);
       console.log(`Server ID: ${SERVER_ID}`);
-      console.log(`Serving on http://0.0.0.0:${PORT}`);
+      console.log(``);
+      console.log(`API Documentation: http://localhost:${PORT}/api/docs`);
+      console.log(`OpenAPI Spec:      http://localhost:${PORT}/api/openapi.json`);
       console.log(``);
       console.log(`Endpoints:`);
       console.log(`  POST /api/spice/sgp4/parse      - Parse TLE`);
@@ -273,6 +294,8 @@ initSGP4()
       console.log(`  GET  /api/spice/sgp4/health     - Health check`);
       console.log(`  GET  /api/models/               - List models`);
       console.log(`  GET  /api/models/wgs/:name      - Get WGS model details`);
+      console.log(``);
+      console.log(`Press Ctrl+C to stop the server`);
     });
   })
   .catch((err) => {
