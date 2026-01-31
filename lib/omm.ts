@@ -1,0 +1,326 @@
+/**
+ * Orbital Mean-Elements Message (OMM) support
+ *
+ * OMM is a CCSDS standard (Consultative Committee for Space Data Systems)
+ * for representing orbital elements in a structured format (XML/JSON).
+ * This module provides conversion between OMM JSON and TLE format.
+ */
+
+/**
+ * OMM JSON structure following CCSDS 502.0-B-2 standard
+ */
+export interface OMMData {
+  // Header
+  CCSDS_OMM_VERS?: string;
+  CREATION_DATE?: string;
+  ORIGINATOR?: string;
+  COMMENT?: string | string[];
+
+  // Metadata
+  OBJECT_NAME: string;
+  OBJECT_ID: string;
+  CENTER_NAME?: string;
+  REF_FRAME?: string;
+  TIME_SYSTEM?: string;
+  MEAN_ELEMENT_THEORY?: string;
+
+  // Mean Keplerian Elements
+  EPOCH: string;
+  MEAN_MOTION: number;
+  ECCENTRICITY: number;
+  INCLINATION: number;
+  RA_OF_ASC_NODE: number;
+  ARG_OF_PERICENTER: number;
+  MEAN_ANOMALY: number;
+
+  // TLE-specific parameters
+  EPHEMERIS_TYPE?: number;
+  CLASSIFICATION_TYPE?: string;
+  NORAD_CAT_ID: number;
+  ELEMENT_SET_NO?: number;
+  REV_AT_EPOCH?: number;
+  BSTAR: number;
+  MEAN_MOTION_DOT: number;
+  MEAN_MOTION_DDOT?: number;
+}
+
+/**
+ * TLE output from OMM conversion
+ */
+export interface TLEOutput {
+  line1: string;
+  line2: string;
+  name?: string;
+}
+
+/**
+ * Validate required OMM fields
+ */
+export function validateOMM(omm: Partial<OMMData>): omm is OMMData {
+  const required = [
+    'OBJECT_NAME',
+    'OBJECT_ID',
+    'EPOCH',
+    'MEAN_MOTION',
+    'ECCENTRICITY',
+    'INCLINATION',
+    'RA_OF_ASC_NODE',
+    'ARG_OF_PERICENTER',
+    'MEAN_ANOMALY',
+    'NORAD_CAT_ID',
+    'BSTAR',
+    'MEAN_MOTION_DOT',
+  ];
+
+  for (const field of required) {
+    if ((omm as Record<string, unknown>)[field] === undefined) {
+      throw new Error(`Missing required OMM field: ${field}`);
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Parse epoch string to year and day of year
+ */
+function parseEpoch(epochStr: string): { year: number; dayOfYear: number } {
+  const date = new Date(epochStr);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid epoch format: ${epochStr}`);
+  }
+
+  const year = date.getUTCFullYear();
+  const startOfYear = new Date(Date.UTC(year, 0, 1));
+  const diff = date.getTime() - startOfYear.getTime();
+  const dayOfYear = diff / (24 * 60 * 60 * 1000) + 1;
+
+  return { year, dayOfYear };
+}
+
+/**
+ * Format a number with leading zeros
+ */
+function padNumber(num: number, width: number): string {
+  return num.toString().padStart(width, '0');
+}
+
+/**
+ * Format exponential notation for TLE (e.g., " 00000-0" for 0.0 or " 12345-4" for 0.00012345)
+ */
+function formatTLEExponential(value: number): string {
+  if (value === 0) {
+    return ' 00000-0';
+  }
+
+  const sign = value >= 0 ? ' ' : '-';
+  const absValue = Math.abs(value);
+
+  // Find exponent
+  const exp = Math.floor(Math.log10(absValue));
+  const mantissa = absValue / Math.pow(10, exp);
+
+  // Convert mantissa to 5-digit integer (without leading decimal point)
+  const mantissaInt = Math.round(mantissa * 100000);
+  const mantissaStr = mantissaInt.toString().slice(0, 5).padStart(5, '0');
+
+  // Exponent in TLE is one less than scientific notation
+  // because TLE assumes leading decimal point
+  return `${sign}${mantissaStr}${exp >= 0 ? '-' : '+'}${Math.abs(exp + 1)}`;
+}
+
+/**
+ * Calculate TLE checksum (modulo 10 checksum)
+ */
+function calculateChecksum(line: string): number {
+  let sum = 0;
+  for (let i = 0; i < line.length - 1; i++) {
+    const char = line[i];
+    if (char >= '0' && char <= '9') {
+      sum += parseInt(char, 10);
+    } else if (char === '-') {
+      sum += 1;
+    }
+  }
+  return sum % 10;
+}
+
+/**
+ * Convert OMM JSON to Two-Line Element (TLE) format
+ *
+ * TLE Format Reference:
+ * Line 1: 1 NNNNNC NNNNNAAA NNNNN.NNNNNNNN +.NNNNNNNN +NNNNN-N +NNNNN-N N NNNNN
+ * Line 2: 2 NNNNN NNN.NNNN NNN.NNNN NNNNNNN NNN.NNNN NNN.NNNN NN.NNNNNNNNNNNNNN
+ */
+export function ommToTLE(omm: OMMData): TLEOutput {
+  validateOMM(omm);
+
+  const { year, dayOfYear } = parseEpoch(omm.EPOCH);
+
+  // Extract international designator from OBJECT_ID (e.g., "1998-067A")
+  const intlDesignator = omm.OBJECT_ID.replace('-', '');
+  const launchYear = intlDesignator.slice(0, 4);
+  const launchNum = intlDesignator.slice(4, 7);
+  const launchPiece = intlDesignator.slice(7) || 'A';
+
+  // Classification (default: U for Unclassified)
+  const classification = omm.CLASSIFICATION_TYPE || 'U';
+
+  // Element set number (default: 999)
+  const elementSetNo = omm.ELEMENT_SET_NO || 999;
+
+  // Revolution number at epoch
+  const revAtEpoch = omm.REV_AT_EPOCH || 0;
+
+  // Ephemeris type (default: 0 for SGP4)
+  const ephemerisType = omm.EPHEMERIS_TYPE || 0;
+
+  // Format mean motion dot (revs/day^2 / 2 in TLE)
+  const meanMotionDot = omm.MEAN_MOTION_DOT / 2;
+  const mmDotSign = meanMotionDot >= 0 ? ' ' : '-';
+  const mmDotStr = Math.abs(meanMotionDot).toFixed(8).slice(1); // Remove leading 0
+
+  // Format mean motion double dot
+  const meanMotionDdot = omm.MEAN_MOTION_DDOT || 0;
+  const mmDdotStr = formatTLEExponential(meanMotionDdot / 6);
+
+  // Format BSTAR
+  const bstarStr = formatTLEExponential(omm.BSTAR);
+
+  // Build Line 1
+  // Columns: 1-1: Line number, 3-7: Catalog number, 8: Classification
+  // 10-17: Int'l designator, 19-32: Epoch, 34-43: Mean motion dot
+  // 45-52: Mean motion ddot, 54-61: BSTAR, 63: Ephemeris type, 65-68: Element set
+  let line1 =
+    `1 ${padNumber(omm.NORAD_CAT_ID, 5)}${classification} ` +
+    `${launchYear.slice(2)}${launchNum}${launchPiece.padEnd(3)} ` +
+    `${(year % 100).toString().padStart(2, '0')}${dayOfYear.toFixed(8).padStart(12, '0')} ` +
+    `${mmDotSign}${mmDotStr} ${mmDdotStr} ${bstarStr} ${ephemerisType} ` +
+    `${padNumber(elementSetNo % 10000, 4)}`;
+
+  // Pad to 68 characters and add checksum
+  line1 = line1.padEnd(68);
+  line1 = line1 + calculateChecksum(line1 + '0');
+
+  // Build Line 2
+  // Columns: 1-1: Line number, 3-7: Catalog number, 9-16: Inclination
+  // 18-25: RAAN, 27-33: Eccentricity, 35-42: Arg of perigee
+  // 44-51: Mean anomaly, 53-63: Mean motion, 64-68: Rev number at epoch
+  const eccentricityStr = omm.ECCENTRICITY.toFixed(7).slice(2); // Remove "0."
+
+  let line2 =
+    `2 ${padNumber(omm.NORAD_CAT_ID, 5)} ` +
+    `${omm.INCLINATION.toFixed(4).padStart(8)} ` +
+    `${omm.RA_OF_ASC_NODE.toFixed(4).padStart(8)} ` +
+    `${eccentricityStr} ` +
+    `${omm.ARG_OF_PERICENTER.toFixed(4).padStart(8)} ` +
+    `${omm.MEAN_ANOMALY.toFixed(4).padStart(8)} ` +
+    `${omm.MEAN_MOTION.toFixed(8).padStart(11)}` +
+    `${padNumber(revAtEpoch % 100000, 5)}`;
+
+  // Pad to 68 characters and add checksum
+  line2 = line2.padEnd(68);
+  line2 = line2 + calculateChecksum(line2 + '0');
+
+  return {
+    line1,
+    line2,
+    name: omm.OBJECT_NAME,
+  };
+}
+
+/**
+ * Convert TLE to OMM JSON format
+ */
+export function tleToOMM(line1: string, line2: string, objectName?: string): OMMData {
+  // Parse Line 1
+  const catalogNumber = parseInt(line1.slice(2, 7).trim(), 10);
+  const classification = line1[7];
+  const intlDesignatorYear = line1.slice(9, 11);
+  const intlDesignatorLaunch = line1.slice(11, 14);
+  const intlDesignatorPiece = line1.slice(14, 17).trim();
+
+  const epochYear = parseInt(line1.slice(18, 20), 10);
+  const epochDay = parseFloat(line1.slice(20, 32));
+
+  // Convert 2-digit year to 4-digit
+  const fullYear = epochYear >= 57 ? 1900 + epochYear : 2000 + epochYear;
+
+  // Convert day of year to ISO date
+  const epochDate = new Date(Date.UTC(fullYear, 0, 1));
+  epochDate.setTime(epochDate.getTime() + (epochDay - 1) * 24 * 60 * 60 * 1000);
+  const epochStr = epochDate.toISOString().replace('Z', '');
+
+  // Mean motion derivatives
+  const meanMotionDot = parseFloat(line1.slice(33, 43).trim()) * 2;
+
+  // Parse exponential format (e.g., " 00000-0")
+  const mmDdotStr = line1.slice(44, 52).trim();
+  const meanMotionDdot = parseExponential(mmDdotStr) * 6;
+
+  const bstarStr = line1.slice(53, 61).trim();
+  const bstar = parseExponential(bstarStr);
+
+  const ephemerisType = parseInt(line1.slice(62, 63), 10);
+  const elementSetNo = parseInt(line1.slice(64, 68).trim(), 10);
+
+  // Parse Line 2
+  const inclination = parseFloat(line2.slice(8, 16).trim());
+  const raan = parseFloat(line2.slice(17, 25).trim());
+  const eccentricity = parseFloat('0.' + line2.slice(26, 33).trim());
+  const argOfPerigee = parseFloat(line2.slice(34, 42).trim());
+  const meanAnomaly = parseFloat(line2.slice(43, 51).trim());
+  const meanMotion = parseFloat(line2.slice(52, 63).trim());
+  const revAtEpoch = parseInt(line2.slice(63, 68).trim(), 10);
+
+  // Build international designator
+  const fullIntlYear = parseInt(intlDesignatorYear, 10) >= 57 ? '19' + intlDesignatorYear : '20' + intlDesignatorYear;
+  const objectId = `${fullIntlYear}-${intlDesignatorLaunch}${intlDesignatorPiece}`;
+
+  return {
+    CCSDS_OMM_VERS: '2.0',
+    CREATION_DATE: new Date().toISOString(),
+    ORIGINATOR: 'SPICE-SGP4',
+    OBJECT_NAME: objectName || `NORAD ${catalogNumber}`,
+    OBJECT_ID: objectId,
+    CENTER_NAME: 'EARTH',
+    REF_FRAME: 'TEME',
+    TIME_SYSTEM: 'UTC',
+    MEAN_ELEMENT_THEORY: 'SGP4',
+    EPOCH: epochStr,
+    MEAN_MOTION: meanMotion,
+    ECCENTRICITY: eccentricity,
+    INCLINATION: inclination,
+    RA_OF_ASC_NODE: raan,
+    ARG_OF_PERICENTER: argOfPerigee,
+    MEAN_ANOMALY: meanAnomaly,
+    EPHEMERIS_TYPE: ephemerisType,
+    CLASSIFICATION_TYPE: classification,
+    NORAD_CAT_ID: catalogNumber,
+    ELEMENT_SET_NO: elementSetNo,
+    REV_AT_EPOCH: revAtEpoch,
+    BSTAR: bstar,
+    MEAN_MOTION_DOT: meanMotionDot,
+    MEAN_MOTION_DDOT: meanMotionDdot,
+  };
+}
+
+/**
+ * Parse TLE exponential format (e.g., " 12345-4" -> 0.000012345)
+ */
+function parseExponential(str: string): number {
+  if (!str || str.trim() === '' || str.trim() === '00000-0' || str.trim() === '00000+0') {
+    return 0;
+  }
+
+  const trimmed = str.trim();
+  const sign = trimmed[0] === '-' ? -1 : 1;
+  const mantissaStr = trimmed[0] === '-' || trimmed[0] === '+' ? trimmed.slice(1, 6) : trimmed.slice(0, 5);
+  const expSign = trimmed.includes('+') ? 1 : -1;
+  const expStr = trimmed.slice(-1);
+
+  const mantissa = parseInt(mantissaStr, 10) / 100000;
+  const exponent = parseInt(expStr, 10) * expSign;
+
+  return sign * mantissa * Math.pow(10, exponent);
+}

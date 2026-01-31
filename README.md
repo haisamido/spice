@@ -17,6 +17,8 @@ This project provides NASA/JPL NAIF CSPICE functionality compiled to WebAssembly
 
 Current work: SGP4 satellite orbit propagation using CSPICE compiled to WebAssembly.
 
+Supports both **TLE** (Two-Line Element) and **OMM** (Orbital Mean-Elements Message) formats.
+
 ## Quick Start
 
 ```bash
@@ -57,10 +59,14 @@ task --list
 | Task | Description |
 |------|-------------|
 | `test:api:health` | Test health endpoint |
-| `test:api:parse` | Test TLE parse endpoint |
-| `test:api:propagate` | Test TLE propagate endpoint |
+| `test:api:parse:tle` | Test TLE parse endpoint |
+| `test:api:parse:omm` | Test OMM parse endpoint |
+| `test:api:propagate:tle` | Test TLE propagate endpoint |
+| `test:api:propagate:omm` | Test OMM propagate endpoint |
 | `test:api:utc-to-et` | Test UTC to ET conversion |
 | `test:api:et-to-utc` | Test ET to UTC conversion |
+| `test:api:omm:to-tle` | Test OMM to TLE conversion |
+| `test:api:tle:to-omm` | Test TLE to OMM conversion |
 | `test:api:all` | Run all API tests (server must be running) |
 
 ## API Documentation
@@ -95,6 +101,38 @@ curl -X POST http://localhost:50000/api/spice/sgp4/propagate \
     "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
     "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
     "time": "2024-01-15T12:00:00"
+  }'
+```
+
+### OMM (Orbital Mean-Elements Message)
+
+OMM is a modern CCSDS standard (JSON format) that replaces the legacy TLE format.
+
+```bash
+# Parse OMM
+curl -X POST http://localhost:50000/api/spice/sgp4/omm/parse \
+  -H "Content-Type: application/json" \
+  -d '{
+    "OBJECT_NAME": "ISS (ZARYA)",
+    "OBJECT_ID": "1998-067A",
+    "EPOCH": "2024-01-15T12:00:00.000",
+    "MEAN_MOTION": 15.49560830,
+    "ECCENTRICITY": 0.0006703,
+    "INCLINATION": 51.6400,
+    "RA_OF_ASC_NODE": 208.9163,
+    "ARG_OF_PERICENTER": 30.0825,
+    "MEAN_ANOMALY": 330.0579,
+    "NORAD_CAT_ID": 25544,
+    "BSTAR": 0.00010270,
+    "MEAN_MOTION_DOT": 0.00016717
+  }'
+
+# Convert TLE to OMM
+curl -X POST http://localhost:50000/api/spice/sgp4/tle/to-omm \
+  -H "Content-Type: application/json" \
+  -d '{
+    "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+    "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
   }'
 ```
 

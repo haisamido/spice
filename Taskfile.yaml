@@ -121,10 +121,10 @@ tasks:
       - echo "=== Testing Health Endpoint ==="
       - curl -s {{.API_BASE}}/health | jq .
 
-  test:api:parse:
+  test:api:parse:tle:
     desc: Test TLE parse endpoint
     cmds:
-      - echo "=== Testing Parse Endpoint ==="
+      - echo "=== Testing TLE Parse Endpoint ==="
       - |
         curl -s -X POST {{.API_BASE}}/parse \
           -H "Content-Type: application/json" \
@@ -133,10 +133,10 @@ tasks:
             "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
           }' | jq .
 
-  test:api:propagate:
+  test:api:propagate:tle:
     desc: Test TLE propagate endpoint
     cmds:
-      - echo "=== Testing Propagate Endpoint ==="
+      - echo "=== Testing TLE Propagate Endpoint ==="
       - |
         curl -s -X POST {{.API_BASE}}/propagate \
           -H "Content-Type: application/json" \
@@ -189,18 +189,104 @@ tasks:
             "time": "2024-01-15T12:00:00"
           }' | jq .
 
+  test:api:parse:omm:
+    desc: Test OMM parse endpoint
+    cmds:
+      - echo "=== Testing OMM Parse Endpoint ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/omm/parse \
+          -H "Content-Type: application/json" \
+          -d '{
+            "OBJECT_NAME": "ISS (ZARYA)",
+            "OBJECT_ID": "1998-067A",
+            "EPOCH": "2024-01-15T12:00:00.000",
+            "MEAN_MOTION": 15.49560830,
+            "ECCENTRICITY": 0.0006703,
+            "INCLINATION": 51.6400,
+            "RA_OF_ASC_NODE": 208.9163,
+            "ARG_OF_PERICENTER": 30.0825,
+            "MEAN_ANOMALY": 330.0579,
+            "NORAD_CAT_ID": 25544,
+            "BSTAR": 0.00010270,
+            "MEAN_MOTION_DOT": 0.00016717
+          }' | jq .
+
+  test:api:propagate:omm:
+    desc: Test OMM propagate endpoint
+    cmds:
+      - echo "=== Testing OMM Propagate Endpoint ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/omm/propagate \
+          -H "Content-Type: application/json" \
+          -d '{
+            "omm": {
+              "OBJECT_NAME": "ISS (ZARYA)",
+              "OBJECT_ID": "1998-067A",
+              "EPOCH": "2024-01-15T12:00:00.000",
+              "MEAN_MOTION": 15.49560830,
+              "ECCENTRICITY": 0.0006703,
+              "INCLINATION": 51.6400,
+              "RA_OF_ASC_NODE": 208.9163,
+              "ARG_OF_PERICENTER": 30.0825,
+              "MEAN_ANOMALY": 330.0579,
+              "NORAD_CAT_ID": 25544,
+              "BSTAR": 0.00010270,
+              "MEAN_MOTION_DOT": 0.00016717
+            },
+            "time": "2024-01-15T14:00:00"
+          }' | jq .
+
+  test:api:omm:to-tle:
+    desc: Test OMM to TLE conversion
+    cmds:
+      - echo "=== Testing OMM to TLE Conversion ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/omm/to-tle \
+          -H "Content-Type: application/json" \
+          -d '{
+            "OBJECT_NAME": "ISS (ZARYA)",
+            "OBJECT_ID": "1998-067A",
+            "EPOCH": "2024-01-15T12:00:00.000",
+            "MEAN_MOTION": 15.49560830,
+            "ECCENTRICITY": 0.0006703,
+            "INCLINATION": 51.6400,
+            "RA_OF_ASC_NODE": 208.9163,
+            "ARG_OF_PERICENTER": 30.0825,
+            "MEAN_ANOMALY": 330.0579,
+            "NORAD_CAT_ID": 25544,
+            "BSTAR": 0.00010270,
+            "MEAN_MOTION_DOT": 0.00016717
+          }' | jq .
+
+  test:api:tle:to-omm:
+    desc: Test TLE to OMM conversion
+    cmds:
+      - echo "=== Testing TLE to OMM Conversion ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/tle/to-omm \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
+            "name": "ISS (ZARYA)"
+          }' | jq .
+
   test:api:all:
     desc: Run all API tests (server must be running)
     cmds:
       - task: test:api:health
-      - task: test:api:parse
-      - task: test:api:propagate
+      - task: test:api:parse:tle
+      - task: test:api:propagate:tle
       - task: test:api:utc-to-et
       - task: test:api:et-to-utc
       - task: test:api:models
       - task: test:api:models:wgs72
       - task: test:api:models:wgs84
       - task: test:api:propagate:wgs84
+      - task: test:api:parse:omm
+      - task: test:api:propagate:omm
+      - task: test:api:omm:to-tle
+      - task: test:api:tle:to-omm
 
   container:test:api:
     desc: Start server, run all API tests, then stop

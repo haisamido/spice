@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createSGP4, type SGP4Module } from './index.js';
 import { getAllModels, getWgsModel, getWgsConstants, DEFAULT_MODEL } from './models.js';
+import { OMMData, ommToTLE, tleToOMM, validateOMM } from './omm.js';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
 
@@ -241,6 +242,156 @@ app.get('/api/spice/sgp4/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', initialized: !!sgp4 });
 });
 
+// =============================================================================
+// OMM (Orbital Mean-Elements Message) Endpoints
+// =============================================================================
+
+/**
+ * POST /api/spice/sgp4/omm/parse
+ * Parse OMM JSON and return orbital elements
+ *
+ * Body: OMM JSON object
+ * Returns: { epoch: number, elements: number[], tle: { line1, line2 } }
+ */
+app.post(
+  '/api/spice/sgp4/omm/parse',
+  asyncHandler(async (req: Request, res: Response) => {
+    const omm = req.body as Partial<OMMData>;
+
+    try {
+      validateOMM(omm);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+
+    // Convert OMM to TLE
+    const tle = ommToTLE(omm as OMMData);
+
+    // Parse the generated TLE
+    const parsed = sgp4.parseTLE(tle.line1, tle.line2);
+
+    res.json({
+      epoch: parsed.epoch,
+      elements: Array.from(parsed.elements),
+      tle: {
+        line1: tle.line1,
+        line2: tle.line2,
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/spice/sgp4/omm/propagate
+ * Propagate OMM to a specific time
+ *
+ * Query: ?model=wgs84 (optional, default: wgs72)
+ * Body: { omm: OMMData, time?: string | number, minutes_from_epoch?: boolean }
+ * Returns: { position: {x,y,z}, velocity: {vx,vy,vz}, epoch: number, model: string }
+ */
+app.post(
+  '/api/spice/sgp4/omm/propagate',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { omm, time, minutes_from_epoch, model: bodyModel } = req.body;
+    const queryModel = req.query.model as string | undefined;
+
+    if (!omm) {
+      res.status(400).json({ error: 'Missing omm object in request body' });
+      return;
+    }
+
+    try {
+      validateOMM(omm);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+
+    // Model selection: query param > body param > default
+    const modelName = queryModel || bodyModel || DEFAULT_MODEL;
+    const constants = getWgsConstants(modelName);
+
+    if (!constants) {
+      res.status(400).json({ error: `Unknown model: ${modelName}` });
+      return;
+    }
+
+    // Set geophysical constants for this propagation
+    sgp4.setGeophysicalConstants(constants, modelName);
+
+    // Convert OMM to TLE
+    const tleOutput = ommToTLE(omm as OMMData);
+
+    const tle = sgp4.parseTLE(tleOutput.line1, tleOutput.line2);
+    let state;
+
+    if (minutes_from_epoch && typeof time === 'number') {
+      state = sgp4.propagateMinutes(tle, time);
+    } else if (typeof time === 'string') {
+      const et = sgp4.utcToET(time);
+      state = sgp4.propagate(tle, et);
+    } else if (typeof time === 'number') {
+      state = sgp4.propagate(tle, time);
+    } else {
+      state = sgp4.propagate(tle, tle.epoch);
+    }
+
+    res.json({
+      position: state.position,
+      velocity: state.velocity,
+      epoch: tle.epoch,
+      model: modelName,
+    });
+  })
+);
+
+/**
+ * POST /api/spice/sgp4/omm/to-tle
+ * Convert OMM JSON to TLE format
+ *
+ * Body: OMM JSON object
+ * Returns: { line1: string, line2: string, name?: string }
+ */
+app.post(
+  '/api/spice/sgp4/omm/to-tle',
+  asyncHandler(async (req: Request, res: Response) => {
+    const omm = req.body as Partial<OMMData>;
+
+    try {
+      validateOMM(omm);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+
+    const tle = ommToTLE(omm as OMMData);
+    res.json(tle);
+  })
+);
+
+/**
+ * POST /api/spice/sgp4/tle/to-omm
+ * Convert TLE to OMM JSON format
+ *
+ * Body: { line1: string, line2: string, name?: string }
+ * Returns: OMM JSON object
+ */
+app.post(
+  '/api/spice/sgp4/tle/to-omm',
+  asyncHandler(async (req: Request, res: Response) => {
+    const { line1, line2, name } = req.body;
+
+    if (!line1 || !line2) {
+      res.status(400).json({ error: 'Missing line1 or line2' });
+      return;
+    }
+
+    const omm = tleToOMM(line1, line2, name);
+    res.json(omm);
+  })
+);
+
 /**
  * GET /api/models/
  * List all available geophysical models
@@ -287,13 +438,17 @@ initSGP4()
       console.log(`OpenAPI Spec:      http://localhost:${PORT}/api/openapi.json`);
       console.log(``);
       console.log(`Endpoints:`);
-      console.log(`  POST /api/spice/sgp4/parse      - Parse TLE`);
-      console.log(`  POST /api/spice/sgp4/propagate  - Propagate TLE`);
+      console.log(`  POST /api/spice/sgp4/parse        - Parse TLE`);
+      console.log(`  POST /api/spice/sgp4/propagate    - Propagate TLE`);
+      console.log(`  POST /api/spice/sgp4/omm/parse    - Parse OMM JSON`);
+      console.log(`  POST /api/spice/sgp4/omm/propagate - Propagate OMM`);
+      console.log(`  POST /api/spice/sgp4/omm/to-tle   - Convert OMM to TLE`);
+      console.log(`  POST /api/spice/sgp4/tle/to-omm   - Convert TLE to OMM`);
       console.log(`  GET  /api/spice/sgp4/time/utc-to-et - Convert UTC to ET`);
       console.log(`  GET  /api/spice/sgp4/time/et-to-utc - Convert ET to UTC`);
-      console.log(`  GET  /api/spice/sgp4/health     - Health check`);
-      console.log(`  GET  /api/models/               - List models`);
-      console.log(`  GET  /api/models/wgs/:name      - Get WGS model details`);
+      console.log(`  GET  /api/spice/sgp4/health       - Health check`);
+      console.log(`  GET  /api/models/                 - List models`);
+      console.log(`  GET  /api/models/wgs/:name        - Get WGS model details`);
       console.log(``);
       console.log(`Press Ctrl+C to stop the server`);
     });

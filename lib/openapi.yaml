@@ -6,9 +6,15 @@ info:
 
     ## Features
     - Parse Two-Line Element (TLE) sets into orbital elements
+    - Parse Orbital Mean-Elements Message (OMM) JSON into orbital elements
+    - Convert between TLE and OMM formats
     - Propagate satellite state to any epoch
     - Convert between UTC and Ephemeris Time
     - Support for WGS-72 and WGS-84 geophysical models
+
+    ## Data Formats
+    - **TLE**: Legacy Two-Line Element format (69 characters per line)
+    - **OMM**: CCSDS Orbital Mean-Elements Message (JSON format, CCSDS 502.0-B-2)
 
     ## Reference Frames
     All position and velocity outputs are in the TEME (True Equator Mean Equinox) reference frame,
@@ -27,7 +33,9 @@ servers:
 
 tags:
   - name: SGP4
-    description: Satellite propagation endpoints
+    description: Satellite propagation endpoints (TLE format)
+  - name: OMM
+    description: Orbital Mean-Elements Message endpoints (JSON format)
   - name: Time
     description: Time conversion endpoints
   - name: Models
@@ -123,6 +131,141 @@ paths:
                 $ref: '#/components/schemas/PropagateResponse'
         '400':
           description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/omm/parse:
+    post:
+      summary: Parse OMM
+      description: |
+        Parse an Orbital Mean-Elements Message (OMM) JSON into orbital elements.
+        Also returns the equivalent TLE representation.
+      tags:
+        - OMM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OMMInput'
+            example:
+              OBJECT_NAME: "ISS (ZARYA)"
+              OBJECT_ID: "1998-067A"
+              EPOCH: "2024-01-15T12:00:00.000"
+              MEAN_MOTION: 15.49560830
+              ECCENTRICITY: 0.0006703
+              INCLINATION: 51.6400
+              RA_OF_ASC_NODE: 208.9163
+              ARG_OF_PERICENTER: 30.0825
+              MEAN_ANOMALY: 330.0579
+              NORAD_CAT_ID: 25544
+              BSTAR: 0.00010270
+              MEAN_MOTION_DOT: 0.00016717
+      responses:
+        '200':
+          description: Successfully parsed OMM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OMMParseResponse'
+        '400':
+          description: Missing or invalid OMM fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/omm/propagate:
+    post:
+      summary: Propagate OMM
+      description: |
+        Propagate an OMM to a specific time and return the satellite state vector.
+
+        Time can be specified as:
+        - UTC string (e.g., "2024-01-15T12:00:00")
+        - Ephemeris time (number, seconds past J2000 TDB)
+        - Minutes from epoch (with minutes_from_epoch: true)
+
+        If no time is specified, propagates to the OMM epoch.
+      tags:
+        - OMM
+      parameters:
+        - name: model
+          in: query
+          description: Geophysical model to use
+          schema:
+            type: string
+            enum: [wgs72, wgs84]
+            default: wgs72
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OMMPropagateInput'
+      responses:
+        '200':
+          description: Successfully propagated OMM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropagateResponse'
+        '400':
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/omm/to-tle:
+    post:
+      summary: Convert OMM to TLE
+      description: Convert an Orbital Mean-Elements Message (OMM) JSON to Two-Line Element format.
+      tags:
+        - OMM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OMMInput'
+      responses:
+        '200':
+          description: Successfully converted to TLE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TLEOutput'
+        '400':
+          description: Missing or invalid OMM fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/spice/sgp4/tle/to-omm:
+    post:
+      summary: Convert TLE to OMM
+      description: Convert a Two-Line Element set to Orbital Mean-Elements Message (OMM) JSON format.
+      tags:
+        - OMM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TLEInput'
+      responses:
+        '200':
+          description: Successfully converted to OMM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OMMOutput'
+        '400':
+          description: Missing or invalid TLE lines
           content:
             application/json:
               schema:
@@ -401,6 +544,152 @@ components:
           type: object
           additionalProperties:
             type: string
+
+    OMMInput:
+      type: object
+      required:
+        - OBJECT_NAME
+        - OBJECT_ID
+        - EPOCH
+        - MEAN_MOTION
+        - ECCENTRICITY
+        - INCLINATION
+        - RA_OF_ASC_NODE
+        - ARG_OF_PERICENTER
+        - MEAN_ANOMALY
+        - NORAD_CAT_ID
+        - BSTAR
+        - MEAN_MOTION_DOT
+      properties:
+        CCSDS_OMM_VERS:
+          type: string
+          description: OMM version (default "2.0")
+        CREATION_DATE:
+          type: string
+          description: Creation timestamp
+        ORIGINATOR:
+          type: string
+          description: Data originator
+        OBJECT_NAME:
+          type: string
+          description: Satellite name
+        OBJECT_ID:
+          type: string
+          description: International designator (e.g., "1998-067A")
+        CENTER_NAME:
+          type: string
+          description: Central body (default "EARTH")
+        REF_FRAME:
+          type: string
+          description: Reference frame (default "TEME")
+        TIME_SYSTEM:
+          type: string
+          description: Time system (default "UTC")
+        MEAN_ELEMENT_THEORY:
+          type: string
+          description: Propagation theory (default "SGP4")
+        EPOCH:
+          type: string
+          description: Epoch timestamp (ISO 8601)
+        MEAN_MOTION:
+          type: number
+          description: Mean motion (revolutions/day)
+        ECCENTRICITY:
+          type: number
+          description: Orbital eccentricity
+        INCLINATION:
+          type: number
+          description: Inclination (degrees)
+        RA_OF_ASC_NODE:
+          type: number
+          description: Right ascension of ascending node (degrees)
+        ARG_OF_PERICENTER:
+          type: number
+          description: Argument of pericenter (degrees)
+        MEAN_ANOMALY:
+          type: number
+          description: Mean anomaly (degrees)
+        EPHEMERIS_TYPE:
+          type: integer
+          description: Ephemeris type (default 0 for SGP4)
+        CLASSIFICATION_TYPE:
+          type: string
+          description: Classification (U=Unclassified, C=Classified, S=Secret)
+        NORAD_CAT_ID:
+          type: integer
+          description: NORAD catalog number
+        ELEMENT_SET_NO:
+          type: integer
+          description: Element set number
+        REV_AT_EPOCH:
+          type: integer
+          description: Revolution number at epoch
+        BSTAR:
+          type: number
+          description: Drag coefficient (1/Earth radii)
+        MEAN_MOTION_DOT:
+          type: number
+          description: First derivative of mean motion (rev/day^2)
+        MEAN_MOTION_DDOT:
+          type: number
+          description: Second derivative of mean motion (rev/day^3)
+
+    OMMPropagateInput:
+      type: object
+      required:
+        - omm
+      properties:
+        omm:
+          $ref: '#/components/schemas/OMMInput'
+        time:
+          oneOf:
+            - type: string
+              description: UTC time string
+            - type: number
+              description: Ephemeris time or minutes from epoch
+        minutes_from_epoch:
+          type: boolean
+          description: If true, treat numeric time as minutes from epoch
+          default: false
+        model:
+          type: string
+          description: Geophysical model (wgs72 or wgs84)
+          enum: [wgs72, wgs84]
+
+    OMMParseResponse:
+      type: object
+      properties:
+        epoch:
+          type: number
+          description: Epoch as ephemeris time (seconds past J2000 TDB)
+        elements:
+          type: array
+          items:
+            type: number
+          description: 10-element orbital elements array
+        tle:
+          type: object
+          properties:
+            line1:
+              type: string
+            line2:
+              type: string
+
+    OMMOutput:
+      $ref: '#/components/schemas/OMMInput'
+
+    TLEOutput:
+      type: object
+      properties:
+        line1:
+          type: string
+          description: TLE line 1 (69 characters)
+        line2:
+          type: string
+          description: TLE line 2 (69 characters)
+        name:
+          type: string
+          description: Satellite name (optional)
 
     Error:
       type: object
