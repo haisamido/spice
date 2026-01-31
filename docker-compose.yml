@@ -1,0 +1,19 @@
+networks:
+  spice-network:
+    driver: bridge
+
+services:
+  sgp4-api:
+    build:
+      context: ${CONTAINER_CONTEXT:-.}
+      dockerfile: ${CONTAINER_FILE:-Dockerfile}
+    image: ${CONTAINER_IMAGE:-sgp4-wasm-builder}:${CONTAINER_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-sgp4-api}
+    ports:
+      - "${SERVICE_HOST_PORT:-50000}:${SERVICE_PORT:-50000}"
+    environment:
+      - PORT=${SERVICE_PORT:-50000}
+      - GIT_COMMIT=${GIT_COMMIT:-}
+    networks:
+      - spice-network
+    restart: unless-stopped

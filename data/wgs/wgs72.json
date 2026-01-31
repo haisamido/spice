@@ -1,0 +1,25 @@
+{
+  "name": "WGS-72",
+  "description": "World Geodetic System 1972 constants for SGP4",
+  "source": "Vallado, Revisiting Spacetrack Report #3",
+  "constants": {
+    "J2": 1.082616e-3,
+    "J3": -2.53881e-6,
+    "J4": -1.65597e-6,
+    "KE": 7.43669161e-2,
+    "QO": 120.0,
+    "SO": 78.0,
+    "RE": 6378.135,
+    "AE": 1.0
+  },
+  "units": {
+    "J2": "dimensionless",
+    "J3": "dimensionless",
+    "J4": "dimensionless",
+    "KE": "earth-radii^(3/2) / minute",
+    "QO": "km",
+    "SO": "km",
+    "RE": "km",
+    "AE": "distance units / Earth radius"
+  }
+}

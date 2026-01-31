@@ -1,0 +1,25 @@
+{
+  "name": "WGS-84",
+  "description": "World Geodetic System 1984 constants for SGP4",
+  "source": "Vallado, Revisiting Spacetrack Report #3",
+  "constants": {
+    "J2": 1.08262998905e-3,
+    "J3": -2.53215306e-6,
+    "J4": -1.61098761e-6,
+    "KE": 7.43669161331734132e-2,
+    "QO": 120.0,
+    "SO": 78.0,
+    "RE": 6378.137,
+    "AE": 1.0
+  },
+  "units": {
+    "J2": "dimensionless",
+    "J3": "dimensionless",
+    "J4": "dimensionless",
+    "KE": "earth-radii^(3/2) / minute",
+    "QO": "km",
+    "SO": "km",
+    "RE": "km",
+    "AE": "distance units / Earth radius"
+  }
+}

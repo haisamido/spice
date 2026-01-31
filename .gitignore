@@ -1,0 +1,18 @@
+# Build artifacts
+build/
+dist/*.js
+dist/*.wasm
+dist/*.map
+dist/*.d.ts
+
+# Dependencies
+node_modules/
+
+# Task runner
+.task/
+
+# Claude
+.claude/
+
+# OS files
+.DS_Store
