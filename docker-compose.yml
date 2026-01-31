@@ -3,12 +3,12 @@ networks:
     driver: bridge
 
 services:
-  sgp4-api:
+  spice-api:
     build:
       context: ${CONTAINER_CONTEXT:-.}
       dockerfile: ${CONTAINER_FILE:-Dockerfile}
-    image: ${CONTAINER_IMAGE:-sgp4-wasm-builder}:${CONTAINER_TAG:-latest}
-    container_name: ${CONTAINER_NAME:-sgp4-api}
+    image: ${CONTAINER_IMAGE:-spice-builder}:${CONTAINER_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-spice-api}
     ports:
       - "${SERVICE_HOST_PORT:-50000}:${SERVICE_PORT:-50000}"
     environment:

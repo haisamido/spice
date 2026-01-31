@@ -1,4 +1,4 @@
-# Taskfile for SGP4-WASM build orchestration
+# Taskfile for SPICE build orchestration
 # https://taskfile.dev
 #
 # All building, compiling, testing, and running is done inside Docker
@@ -11,11 +11,11 @@ vars:
   CONTAINER_BIN: docker
   CONTAINER_FILE: Dockerfile
   CONTAINER_CONTEXT: .
-  CONTAINER_IMAGE: sgp4-wasm-builder
+  CONTAINER_IMAGE: spice-builder
   CONTAINER_TAG: latest
-  CONTAINER_NAME: sgp4-api
-  CONTAINER_NAME_TEST: sgp4-api-test
-  COMPOSE_SERVICE: sgp4-api
+  CONTAINER_NAME: spice-api
+  CONTAINER_NAME_TEST: spice-api-test
+  COMPOSE_SERVICE: spice-api
   SERVICE_HOST_PORT: 50000
   SERVICE_PORT: 50000
   API_BASE: http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4

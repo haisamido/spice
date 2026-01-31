@@ -1,6 +1,10 @@
-# SGP4-WASM
+# SPICE
 
-SGP4 satellite orbit propagation using NASA/JPL NAIF CSPICE compiled to WebAssembly.
+This project provides NASA/JPL NAIF CSPICE functionality compiled to WebAssembly.
+
+## SPICE: SGP4-WASM
+
+Current work: SGP4 satellite orbit propagation using CSPICE compiled to WebAssembly.
 
 ## Quick Start
 
@@ -29,6 +33,7 @@ task --list
 | `docker:start` | Build and start the REST API server (detached) |
 | `docker:stop` | Stop the running server |
 | `docker:logs` | View server logs |
+| `docker:logs:follow` | Follow server logs |
 | `docker:test` | Run unit tests |
 | `docker:test:api` | Start server, run all API tests, stop |
 | `docker:shell` | Open shell in build environment |
