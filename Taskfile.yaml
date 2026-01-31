@@ -1,7 +1,7 @@
 # Taskfile for SPICE build orchestration
 # https://taskfile.dev
 #
-# All building, compiling, testing, and running is done inside Docker
+# All building, compiling, testing, and running is done inside containers
 
 version: '3'
 
@@ -9,7 +9,7 @@ silent: false
 
 vars:
   CONTAINER_BIN: docker
-  CONTAINER_FILE: Dockerfile
+  CONTAINER_FILE: Containerfile
   CONTAINER_CONTEXT: .
   CONTAINER_IMAGE: spice-builder
   CONTAINER_TAG: latest
@@ -19,6 +19,11 @@ vars:
   SERVICE_HOST_PORT: 50000
   SERVICE_PORT: 50000
   API_BASE: http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4
+  # Remote image settings
+  REMOTE_REGISTRY: ghcr.io/haisamido
+  REMOTE_IMAGE: spice
+  REMOTE_TAG: latest
+  PLATFORM: linux/amd64
 
 tasks:
   default:
@@ -26,26 +31,33 @@ tasks:
     cmds:
       - task --list
 
-  docker:build:
-    desc: Build the Docker image (WASM + npm + TypeScript)
+  container:build:
+    desc: Build the container image locally (WASM + npm + TypeScript)
     cmds:
       - "{{.CONTAINER_BIN}} compose build {{.COMPOSE_SERVICE}}"
 
-  docker:test:
-    desc: Run tests inside Docker
+  container:pull:
+    desc: Pull remote container image from registry
+    cmds:
+      - "{{.CONTAINER_BIN}} pull --platform {{.PLATFORM}} {{.REMOTE_REGISTRY}}/{{.REMOTE_IMAGE}}:{{.REMOTE_TAG}}"
+      - "{{.CONTAINER_BIN}} tag {{.REMOTE_REGISTRY}}/{{.REMOTE_IMAGE}}:{{.REMOTE_TAG}} {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}}"
+      - echo "Pulled and tagged as {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}}"
+
+  container:test:
+    desc: Run tests inside container
     deps:
-      - docker:build
+      - container:build
     cmds:
       - "{{.CONTAINER_BIN}} run --rm {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} npm test"
 
-  docker:example:
-    desc: Run the Node.js example inside Docker
+  container:example:
+    desc: Run the Node.js example inside container
     deps:
-      - docker:build
+      - container:build
     cmds:
       - "{{.CONTAINER_BIN}} run --rm {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} node examples/node-example.js"
 
-  docker:start:
+  container:start:
     desc: Build and start the REST API server (detached)
     cmds:
       - "{{.CONTAINER_BIN}} compose up -d --build"
@@ -53,29 +65,43 @@ tasks:
       - sleep 3
       - echo ""
       - echo "Server running at http://localhost:{{.SERVICE_HOST_PORT}}"
-      - echo "  task docker:logs         - View logs"
-      - echo "  task docker:logs:follow  - Follow logs"
-      - echo "  task docker:stop         - Stop server"
+      - echo "  task container:logs         - View logs"
+      - echo "  task container:logs:follow  - Follow logs"
+      - echo "  task container:stop         - Stop server"
 
-  docker:stop:
+  container:start:pull:
+    desc: Pull remote image and start the REST API server (detached)
+    deps:
+      - container:pull
+    cmds:
+      - "{{.CONTAINER_BIN}} compose up -d"
+      - echo "Waiting for server to start..."
+      - sleep 3
+      - echo ""
+      - echo "Server running at http://localhost:{{.SERVICE_HOST_PORT}}"
+      - echo "  task container:logs         - View logs"
+      - echo "  task container:logs:follow  - Follow logs"
+      - echo "  task container:stop         - Stop server"
+
+  container:stop:
     desc: Stop and remove the REST API server container
     cmds:
       - "{{.CONTAINER_BIN}} compose down -v"
 
-  docker:logs:
+  container:logs:
     desc: View logs from the running REST API server
     cmds:
       - "{{.CONTAINER_BIN}} compose logs {{.COMPOSE_SERVICE}} {{.CLI_ARGS}}"
 
-  docker:logs:follow:
+  container:logs:follow:
     desc: Follow logs from the running REST API server
     cmds:
       - "{{.CONTAINER_BIN}} compose logs -f {{.COMPOSE_SERVICE}}"
 
-  docker:shell:
-    desc: Open a shell in the Docker build environment
+  container:shell:
+    desc: Open a shell in the container build environment
     deps:
-      - docker:build
+      - container:build
     cmds:
       - "{{.CONTAINER_BIN}} run --rm -it {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} bash"
 
@@ -170,26 +196,26 @@ tasks:
       - task: test:api:models:wgs84
       - task: test:api:propagate:wgs84
 
-  docker:test:api:
+  container:test:api:
     desc: Start server, run all API tests, then stop
     cmds:
-      - task: docker:start
+      - task: container:start
       - task: test:api:all
-      - task: docker:stop
+      - task: container:stop
 
   # ==========================================================================
   # Cleanup Tasks
   # ==========================================================================
 
-  docker:rmi:
-    desc: Remove the Docker image
+  container:rmi:
+    desc: Remove the container image
     cmds:
       - "{{.CONTAINER_BIN}} rmi {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} || true"
 
-  docker:expunge:
+  container:expunge:
     desc: Stop all containers and remove all images related to this repo
     deps:
-      - docker:stop
+      - container:stop
     cmds:
       - |
         echo "Stopping containers..."

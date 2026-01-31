@@ -9,10 +9,10 @@ Current work: SGP4 satellite orbit propagation using CSPICE compiled to WebAssem
 ## Quick Start
 
 ```bash
-task docker:start
+task container:start
 ```
 
-This builds the Docker image (compiles CSPICE to WASM, installs npm deps, compiles TypeScript) and starts the REST API server in the background at http://localhost:50000. Use `task docker:logs` to view output or `task docker:stop` to stop.
+This builds the container image (compiles CSPICE to WASM, installs npm deps, compiles TypeScript) and starts the REST API server in the background at http://localhost:50000. Use `task container:logs` to view output or `task container:stop` to stop.
 
 ## Prerequisites
 
@@ -25,19 +25,21 @@ This builds the Docker image (compiles CSPICE to WASM, installs npm deps, compil
 task --list
 ```
 
-### Docker Tasks
+### Container Tasks
 
 | Task | Description |
 |------|-------------|
-| `docker:build` | Full build (WASM + npm + TypeScript) |
-| `docker:start` | Build and start the REST API server (detached) |
-| `docker:stop` | Stop the running server |
-| `docker:logs` | View server logs |
-| `docker:logs:follow` | Follow server logs |
-| `docker:test` | Run unit tests |
-| `docker:test:api` | Start server, run all API tests, stop |
-| `docker:shell` | Open shell in build environment |
-| `docker:expunge` | Remove all containers and images |
+| `container:build` | Build image locally (WASM + npm + TypeScript) |
+| `container:pull` | Pull remote image from registry |
+| `container:start` | Build and start the REST API server (detached) |
+| `container:start:pull` | Pull remote image and start server (detached) |
+| `container:stop` | Stop the running server |
+| `container:logs` | View server logs |
+| `container:logs:follow` | Follow server logs |
+| `container:test` | Run unit tests |
+| `container:test:api` | Start server, run all API tests, stop |
+| `container:shell` | Open shell in build environment |
+| `container:expunge` | Remove all containers and images |
 
 ### API Test Tasks
 
@@ -93,10 +95,16 @@ Override defaults via task variables:
 
 ```bash
 # Use a different port
-task docker:start SERVICE_HOST_PORT=8080
+task container:start SERVICE_HOST_PORT=8080
 
 # Use podman instead of docker
-task docker:start CONTAINER_BIN=podman
+task container:start CONTAINER_BIN=podman
+
+# Pull remote image with specific platform
+task container:pull PLATFORM=linux/arm64
+
+# Pull specific tag from registry
+task container:start:pull REMOTE_TAG=v1.0.0
 ```
 
 ## License

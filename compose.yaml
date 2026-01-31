@@ -6,7 +6,7 @@ services:
   spice-api:
     build:
       context: ${CONTAINER_CONTEXT:-.}
-      dockerfile: ${CONTAINER_FILE:-Dockerfile}
+      dockerfile: ${CONTAINER_FILE:-Containerfile}
     image: ${CONTAINER_IMAGE:-spice-builder}:${CONTAINER_TAG:-latest}
     container_name: ${CONTAINER_NAME:-spice-api}
     ports:
