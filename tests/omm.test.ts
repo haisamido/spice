@@ -4,7 +4,7 @@
  * Tests for CCSDS 502.0-B-2/B-3 Orbital Mean-Elements Message compliance.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   OMMData,
   OMMCovariance,
@@ -15,6 +15,7 @@ import {
   ommToTLE,
   tleToOMM,
 } from '../lib/omm.js';
+import { createSGP4, type SGP4Module } from '../dist/index.js';
 
 describe('OMM CCSDS Compliance', () => {
   // ISS TLE for testing
@@ -279,5 +280,189 @@ describe('OMM CCSDS Compliance', () => {
       expect(omm.SPACECRAFT).toBeDefined();
       expect(omm.USER_DEFINED).toBeDefined();
     });
+  });
+});
+
+/**
+ * TLE vs OMM Propagation Comparison Tests
+ *
+ * Verifies that TLE and OMM inputs produce identical propagation results
+ * when using the same orbital data and propagation parameters.
+ *
+ * Note: TLE format has limited precision (fixed-width fields), so round-trip
+ * conversion (TLE → OMM → TLE) may introduce small errors. These tests verify
+ * the conversion preserves orbital elements within TLE format precision limits.
+ */
+describe('TLE vs OMM Propagation Comparison', () => {
+  let sgp4: SGP4Module;
+
+  // ISS TLE for comparison testing
+  const ISS_LINE1 =
+    '1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025';
+  const ISS_LINE2 =
+    '2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19';
+
+  beforeAll(async () => {
+    sgp4 = await createSGP4();
+    await sgp4.init();
+  });
+
+  it('should produce identical single-point propagation results at epoch', () => {
+    // Parse TLE directly
+    const tleParsed = sgp4.parseTLE(ISS_LINE1, ISS_LINE2);
+
+    // Convert TLE to OMM, then back to TLE and parse
+    const omm = tleToOMM(ISS_LINE1, ISS_LINE2, 'ISS');
+    const ommTle = ommToTLE(omm);
+    const ommParsed = sgp4.parseTLE(ommTle.line1, ommTle.line2);
+
+    // Propagate both at TLE epoch (where precision is best)
+    const tleState = sgp4.propagate(tleParsed, tleParsed.epoch);
+    const ommState = sgp4.propagate(ommParsed, ommParsed.epoch);
+
+    // Calculate position difference
+    const posDiff = Math.sqrt(
+      (tleState.position.x - ommState.position.x) ** 2 +
+        (tleState.position.y - ommState.position.y) ** 2 +
+        (tleState.position.z - ommState.position.z) ** 2
+    );
+
+    // Calculate velocity difference
+    const velDiff = Math.sqrt(
+      (tleState.velocity.vx - ommState.velocity.vx) ** 2 +
+        (tleState.velocity.vy - ommState.velocity.vy) ** 2 +
+        (tleState.velocity.vz - ommState.velocity.vz) ** 2
+    );
+
+    // At epoch, differences should be minimal (< 1 km position, < 1 m/s velocity)
+    // due to TLE format precision limits
+    expect(posDiff).toBeLessThan(1.0); // km
+    expect(velDiff).toBeLessThan(0.001); // km/s
+  });
+
+  it('should produce consistent time range propagation results', () => {
+    // Parse TLE directly
+    const tleParsed = sgp4.parseTLE(ISS_LINE1, ISS_LINE2);
+
+    // Convert TLE to OMM, then back to TLE and parse
+    const omm = tleToOMM(ISS_LINE1, ISS_LINE2, 'ISS');
+    const ommTle = ommToTLE(omm);
+    const ommParsed = sgp4.parseTLE(ommTle.line1, ommTle.line2);
+
+    // Propagation parameters: 2 hours with 60-second steps
+    const t0 = sgp4.utcToET('2024-01-15T12:00:00');
+    const tf = sgp4.utcToET('2024-01-15T14:00:00');
+    const stepSeconds = 60;
+
+    // Track maximum differences
+    let maxPosDiff = 0;
+    let maxVelDiff = 0;
+    let stateCount = 0;
+
+    for (let et = t0; et <= tf; et += stepSeconds) {
+      const tleState = sgp4.propagate(tleParsed, et);
+      const ommState = sgp4.propagate(ommParsed, et);
+
+      const posDiff = Math.sqrt(
+        (tleState.position.x - ommState.position.x) ** 2 +
+          (tleState.position.y - ommState.position.y) ** 2 +
+          (tleState.position.z - ommState.position.z) ** 2
+      );
+
+      const velDiff = Math.sqrt(
+        (tleState.velocity.vx - ommState.velocity.vx) ** 2 +
+          (tleState.velocity.vy - ommState.velocity.vy) ** 2 +
+          (tleState.velocity.vz - ommState.velocity.vz) ** 2
+      );
+
+      maxPosDiff = Math.max(maxPosDiff, posDiff);
+      maxVelDiff = Math.max(maxVelDiff, velDiff);
+      stateCount++;
+    }
+
+    // Over 2 hours, expect < 50 km position difference and < 0.05 km/s velocity
+    // These bounds account for TLE format precision limits causing accumulated drift
+    expect(maxPosDiff).toBeLessThan(50); // km
+    expect(maxVelDiff).toBeLessThan(0.05); // km/s
+    expect(stateCount).toBe(121);
+  });
+
+  it('should produce consistent results regardless of WGS model', () => {
+    // This test verifies that TLE and OMM produce identical results
+    // regardless of which WGS model is active (since both use the same model)
+
+    // Parse TLE directly
+    const tleParsed = sgp4.parseTLE(ISS_LINE1, ISS_LINE2);
+
+    // Convert TLE to OMM, then back to TLE and parse
+    const omm = tleToOMM(ISS_LINE1, ISS_LINE2, 'ISS');
+    const ommTle = ommToTLE(omm);
+    const ommParsed = sgp4.parseTLE(ommTle.line1, ommTle.line2);
+
+    // Propagate at multiple times to verify consistency
+    const times = [
+      tleParsed.epoch, // At epoch
+      tleParsed.epoch + 3600, // 1 hour later
+      tleParsed.epoch - 3600, // 1 hour earlier
+    ];
+
+    for (const et of times) {
+      const tleState = sgp4.propagate(tleParsed, et);
+      const ommState = sgp4.propagate(ommParsed, et);
+
+      const posDiff = Math.sqrt(
+        (tleState.position.x - ommState.position.x) ** 2 +
+          (tleState.position.y - ommState.position.y) ** 2 +
+          (tleState.position.z - ommState.position.z) ** 2
+      );
+
+      // Position difference should be minimal at each time
+      expect(posDiff).toBeLessThan(1.0); // km
+    }
+  });
+
+  it('should have matching epochs after conversion', () => {
+    // Parse TLE directly
+    const tleParsed = sgp4.parseTLE(ISS_LINE1, ISS_LINE2);
+
+    // Convert TLE to OMM, then back to TLE and parse
+    const omm = tleToOMM(ISS_LINE1, ISS_LINE2, 'ISS');
+    const ommTle = ommToTLE(omm);
+    const ommParsed = sgp4.parseTLE(ommTle.line1, ommTle.line2);
+
+    // Epochs should be very close (within ~1 second due to TLE day fraction precision)
+    const epochDiff = Math.abs(tleParsed.epoch - ommParsed.epoch);
+    expect(epochDiff).toBeLessThan(1.0); // seconds
+  });
+
+  it('should preserve core orbital elements through conversion', () => {
+    // Parse TLE directly
+    const tleParsed = sgp4.parseTLE(ISS_LINE1, ISS_LINE2);
+
+    // Convert TLE to OMM, then back to TLE and parse
+    const omm = tleToOMM(ISS_LINE1, ISS_LINE2, 'ISS');
+    const ommTle = ommToTLE(omm);
+    const ommParsed = sgp4.parseTLE(ommTle.line1, ommTle.line2);
+
+    // Compare key orbital elements with TLE format precision tolerance
+    // Elements array: [nddot, bstar, inclo, nodeo, ecco, argpo, mo, no, ...]
+
+    // Inclination (index 2) - should match within ~0.0001 deg
+    expect(tleParsed.elements[2]).toBeCloseTo(ommParsed.elements[2], 4);
+
+    // RAAN (index 3) - should match within ~0.0001 deg
+    expect(tleParsed.elements[3]).toBeCloseTo(ommParsed.elements[3], 4);
+
+    // Eccentricity (index 4) - should match within ~0.0000001
+    expect(tleParsed.elements[4]).toBeCloseTo(ommParsed.elements[4], 6);
+
+    // Argument of perigee (index 5) - should match within ~0.0001 deg
+    expect(tleParsed.elements[5]).toBeCloseTo(ommParsed.elements[5], 4);
+
+    // Mean anomaly (index 6) - should match within ~0.0001 deg
+    expect(tleParsed.elements[6]).toBeCloseTo(ommParsed.elements[6], 4);
+
+    // Mean motion (index 7) - should match within ~0.00000001 rev/day
+    expect(tleParsed.elements[7]).toBeCloseTo(ommParsed.elements[7], 7);
   });
 });

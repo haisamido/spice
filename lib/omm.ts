@@ -241,7 +241,15 @@ function padNumber(num: number, width: number): string {
 }
 
 /**
- * Format exponential notation for TLE (e.g., " 00000-0" for 0.0 or " 12345-4" for 0.00012345)
+ * Format exponential notation for TLE (e.g., " 00000-0" for 0.0 or " 10270-3" for 0.0001027)
+ *
+ * TLE exponential format: [sign]NNNNN[exp_sign]N
+ * - sign: ' ' for positive, '-' for negative
+ * - NNNNN: 5-digit mantissa (implied leading decimal point, so 10270 means 0.10270)
+ * - exp_sign: '+' or '-'
+ * - N: single digit exponent (power of 10)
+ *
+ * Example: " 10270-3" = 0.10270 × 10^-3 = 0.0001027
  */
 function formatTLEExponential(value: number): string {
   if (value === 0) {
@@ -251,17 +259,21 @@ function formatTLEExponential(value: number): string {
   const sign = value >= 0 ? ' ' : '-';
   const absValue = Math.abs(value);
 
-  // Find exponent
-  const exp = Math.floor(Math.log10(absValue));
-  const mantissa = absValue / Math.pow(10, exp);
+  // Find exponent in scientific notation (e.g., 0.0001027 = 1.027 × 10^-4)
+  const scientificExp = Math.floor(Math.log10(absValue));
+  const mantissa = absValue / Math.pow(10, scientificExp);
 
-  // Convert mantissa to 5-digit integer (without leading decimal point)
-  const mantissaInt = Math.round(mantissa * 100000);
-  const mantissaStr = mantissaInt.toString().slice(0, 5).padStart(5, '0');
+  // Convert mantissa to 5-digit integer (with implied leading decimal point)
+  // e.g., 1.027 → 10270 (representing 0.10270)
+  const mantissaInt = Math.round(mantissa * 10000);
+  const mantissaStr = mantissaInt.toString().padStart(5, '0');
 
-  // Exponent in TLE is one less than scientific notation
-  // because TLE assumes leading decimal point
-  return `${sign}${mantissaStr}${exp >= 0 ? '-' : '+'}${Math.abs(exp + 1)}`;
+  // TLE exponent = scientific exponent + 1 (because TLE uses 0.xxxxx format)
+  // e.g., 1.027 × 10^-4 → 0.1027 × 10^-3, so TLE exp = -4 + 1 = -3
+  const tleExp = scientificExp + 1;
+  const expSign = tleExp >= 0 ? '+' : '-';
+
+  return `${sign}${mantissaStr}${expSign}${Math.abs(tleExp)}`;
 }
 
 /**
