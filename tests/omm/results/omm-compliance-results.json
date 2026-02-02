@@ -8,7 +8,7 @@
       },
       "output": {
         "CCSDS_OMM_VERS": "2.0",
-        "CREATION_DATE": "2026-02-02T19:47:20.599Z",
+        "CREATION_DATE": "<TESTING_MODE>",
         "ORIGINATOR": "SPICE-SGP4",
         "OBJECT_NAME": "NOT_PROVIDED",
         "OBJECT_ID": "1998-067A",

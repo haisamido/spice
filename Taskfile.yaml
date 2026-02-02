@@ -54,7 +54,7 @@ tasks:
     deps:
       - container:build
     cmds:
-      - "{{.CONTAINER_BIN}} run --rm -v {{.PWD}}/tests:/app/tests {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} npm test"
+      - "{{.CONTAINER_BIN}} run --rm -e MODE=test -v {{.PWD}}/tests:/app/tests {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} npm test"
     vars:
       PWD:
         sh: pwd

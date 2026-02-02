@@ -443,7 +443,7 @@ export function tleToOMM(
 
   const omm: OMMData = {
     CCSDS_OMM_VERS: '2.0',
-    CREATION_DATE: new Date().toISOString(),
+    CREATION_DATE: process.env.MODE === 'test' ? '<TESTING_MODE>' : new Date().toISOString(),
     ORIGINATOR: 'SPICE-SGP4',
     OBJECT_NAME: objectName || 'NOT_PROVIDED',
     OBJECT_ID: objectId,
