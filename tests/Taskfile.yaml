@@ -30,16 +30,16 @@ tasks:
           }' | jq .
 
   api:propagate:tle:t0:
-    desc: Test TLE propagate (single time, t0 only)
+    desc: Test TLE propagate (single time, t0 only, default txt output)
     cmds:
-      - echo "=== Testing TLE Propagate (t0 only) ==="
+      - echo "=== Testing TLE Propagate (t0 only, default txt) ==="
       - |
         curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00" \
           -H "Content-Type: application/json" \
           -d '{
             "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
             "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
-          }' | jq .
+          }'
 
   api:propagate:tle:t0:txt:
     desc: Test TLE propagate (single time, txt output)
@@ -66,16 +66,16 @@ tasks:
           }' | jq .
 
   api:propagate:tle:t0:tf:
-    desc: Test TLE propagate (time range, t0 to tf)
+    desc: Test TLE propagate (time range, t0 to tf, default txt output)
     cmds:
-      - echo "=== Testing TLE Propagate (t0 to tf, 60-sec step) ==="
+      - echo "=== Testing TLE Propagate (t0 to tf, 60-sec step, default txt) ==="
       - |
         curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec" \
           -H "Content-Type: application/json" \
           -d '{
             "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
             "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
-          }' | jq .
+          }'
 
   api:propagate:tle:t0:tf:txt:
     desc: Test TLE propagate (time range, txt output)
@@ -132,16 +132,16 @@ tasks:
       - curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/wgs/wgs84 | jq .
 
   api:propagate:wgs84:
-    desc: Test propagate with WGS-84 model
+    desc: Test propagate with WGS-84 model (default txt output)
     cmds:
-      - echo "=== Testing Propagate with WGS-84 ==="
+      - echo "=== Testing Propagate with WGS-84 (default txt) ==="
       - |
         curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&wgs=wgs84" \
           -H "Content-Type: application/json" \
           -d '{
             "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
             "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
-          }' | jq .
+          }'
 
   api:parse:omm:
     desc: Test OMM parse endpoint
@@ -166,9 +166,9 @@ tasks:
           }' | jq .
 
   api:propagate:omm:t0:tf:
-    desc: Test OMM propagate (time range, t0 to tf)
+    desc: Test OMM propagate (time range, t0 to tf, default txt output)
     cmds:
-      - echo "=== Testing OMM Propagate (t0 to tf, 60-sec step) ==="
+      - echo "=== Testing OMM Propagate (t0 to tf, 60-sec step, default txt) ==="
       - |
         curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm" \
           -H "Content-Type: application/json" \
@@ -187,7 +187,7 @@ tasks:
               "BSTAR": 0.00010270,
               "MEAN_MOTION_DOT": 0.00016717
             }
-          }' | jq .
+          }'
 
   api:propagate:omm:t0:tf:txt:
     desc: Test OMM propagate (time range, txt output)
