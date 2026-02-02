@@ -27,6 +27,12 @@ let sgp4: SGP4Module;
 const SERVER_ID = crypto.randomBytes(4).toString('hex');
 let GIT_HASH = process.env.GIT_COMMIT || '-';
 
+// Propagation limits
+// 14 days × 86,400 sec/day = 1,209,600 + 1 endpoint + 1 header = 1,209,602
+const MAX_POINTS = 1209602;
+// BATCH_SIZE = floor(MAX_POINTS / 1000) = floor(1209602 / 1000) = 1209
+const BATCH_SIZE = Math.floor(MAX_POINTS / 1000);
+
 // Try to get git hash if not provided
 if (GIT_HASH === '-') {
   try {
@@ -256,17 +262,43 @@ app.post(
     const stepSeconds = unit === 'min' ? step * 60 : step;
 
     // Limit number of points to prevent memory issues
-    // 14 days × 86,400 sec/day = 1,209,600 + 1 endpoint + 1 header = 1,209,602
-    const maxPoints = 1209602;
     const estimatedPoints = Math.ceil((etf - et0) / stepSeconds) + 1;
-    if (estimatedPoints > maxPoints) {
+    if (estimatedPoints > MAX_POINTS) {
       res.status(400).json({
-        error: `Too many points (${estimatedPoints}). Maximum allowed is ${maxPoints}. Increase step size.`,
+        error: `Too many points (${estimatedPoints}). Maximum allowed is ${MAX_POINTS}. Increase step size.`,
       });
       return;
     }
 
-    // Propagate over time range
+    // Stream txt output in batches for better performance
+    if (outputType === 'txt') {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="propagation.csv"');
+
+      let buffer = 'datetime,et,x,y,z,vx,vy,vz\n';
+      let count = 0;
+
+      for (let et = et0; et <= etf; et += stepSeconds) {
+        const state = sgp4.propagate(tle, et);
+        const utc = sgp4.etToUTC(et);
+        buffer += `${utc},${et},${state.position.x},${state.position.y},${state.position.z},${state.velocity.vx},${state.velocity.vy},${state.velocity.vz}\n`;
+        count++;
+
+        if (count >= BATCH_SIZE) {
+          res.write(buffer);
+          buffer = '';
+          count = 0;
+        }
+      }
+
+      if (buffer) {
+        res.write(buffer);
+      }
+      res.end();
+      return;
+    }
+
+    // Buffer states for JSON output
     const states: Array<{
       datetime: string;
       et: number;
@@ -283,17 +315,6 @@ app.post(
         position: [state.position.x, state.position.y, state.position.z],
         velocity: [state.velocity.vx, state.velocity.vy, state.velocity.vz],
       });
-    }
-
-    if (outputType === 'txt') {
-      const header = 'datetime,et,x,y,z,vx,vy,vz';
-      const rows = states.map((s) =>
-        `${s.datetime},${s.et},${s.position[0]},${s.position[1]},${s.position[2]},${s.velocity[0]},${s.velocity[1]},${s.velocity[2]}`
-      ).join('\n');
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="propagation.csv"');
-      res.send(`${header}\n${rows}\n`);
-      return;
     }
 
     res.json({
