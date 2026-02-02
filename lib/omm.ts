@@ -4,10 +4,83 @@
  * OMM is a CCSDS standard (Consultative Committee for Space Data Systems)
  * for representing orbital elements in a structured format (XML/JSON).
  * This module provides conversion between OMM JSON and TLE format.
+ *
+ * Reference: CCSDS 502.0-B-2/B-3 Orbit Data Messages
  */
 
 /**
- * OMM JSON structure following CCSDS 502.0-B-2 standard
+ * CCSDS OMM Units (for documentation and validation)
+ */
+export const OMM_UNITS = {
+  MEAN_MOTION: 'rev/day',
+  MEAN_MOTION_DOT: 'rev/day**2',
+  MEAN_MOTION_DDOT: 'rev/day**3',
+  BSTAR: '1/ER', // 1/Earth radii
+  SEMI_MAJOR_AXIS: 'km',
+  GM: 'km**3/s**2',
+  INCLINATION: 'deg',
+  RA_OF_ASC_NODE: 'deg',
+  ARG_OF_PERICENTER: 'deg',
+  MEAN_ANOMALY: 'deg',
+  MASS: 'kg',
+  SOLAR_RAD_AREA: 'm**2',
+  DRAG_AREA: 'm**2',
+} as const;
+
+/**
+ * Covariance matrix (6x6 lower triangular, 21 elements)
+ * Position/Velocity covariance in the specified reference frame.
+ *
+ * Order: [CX_X, CY_X, CY_Y, CZ_X, CZ_Y, CZ_Z,
+ *         CX_DOT_X, CX_DOT_Y, CX_DOT_Z, CX_DOT_X_DOT,
+ *         CY_DOT_X, CY_DOT_Y, CY_DOT_Z, CY_DOT_X_DOT, CY_DOT_Y_DOT,
+ *         CZ_DOT_X, CZ_DOT_Y, CZ_DOT_Z, CZ_DOT_X_DOT, CZ_DOT_Y_DOT, CZ_DOT_Z_DOT]
+ */
+export interface OMMCovariance {
+  COV_REF_FRAME?: string; // Reference frame for covariance
+  CX_X: number; // km²
+  CY_X: number;
+  CY_Y: number;
+  CZ_X: number;
+  CZ_Y: number;
+  CZ_Z: number;
+  CX_DOT_X: number; // km²/s
+  CX_DOT_Y: number;
+  CX_DOT_Z: number;
+  CX_DOT_X_DOT: number; // km²/s²
+  CY_DOT_X: number;
+  CY_DOT_Y: number;
+  CY_DOT_Z: number;
+  CY_DOT_X_DOT: number;
+  CY_DOT_Y_DOT: number;
+  CZ_DOT_X: number;
+  CZ_DOT_Y: number;
+  CZ_DOT_Z: number;
+  CZ_DOT_X_DOT: number;
+  CZ_DOT_Y_DOT: number;
+  CZ_DOT_Z_DOT: number;
+}
+
+/**
+ * Spacecraft parameters (optional per CCSDS)
+ */
+export interface OMMSpacecraftParams {
+  MASS?: number; // kg
+  SOLAR_RAD_AREA?: number; // m²
+  SOLAR_RAD_COEFF?: number; // dimensionless
+  DRAG_AREA?: number; // m²
+  DRAG_COEFF?: number; // dimensionless
+}
+
+/**
+ * User-defined parameters (optional per CCSDS)
+ */
+export interface OMMUserDefined {
+  [key: string]: string | number;
+}
+
+/**
+ * OMM JSON structure following CCSDS 502.0-B-2/B-3 standard
  */
 export interface OMMData {
   // Header
@@ -21,17 +94,20 @@ export interface OMMData {
   OBJECT_ID: string;
   CENTER_NAME?: string;
   REF_FRAME?: string;
+  REF_FRAME_EPOCH?: string; // Reference frame epoch (ISO 8601)
   TIME_SYSTEM?: string;
   MEAN_ELEMENT_THEORY?: string;
 
   // Mean Keplerian Elements
   EPOCH: string;
-  MEAN_MOTION: number;
+  SEMI_MAJOR_AXIS?: number; // km (alternative to MEAN_MOTION)
+  MEAN_MOTION: number; // rev/day
   ECCENTRICITY: number;
-  INCLINATION: number;
-  RA_OF_ASC_NODE: number;
-  ARG_OF_PERICENTER: number;
-  MEAN_ANOMALY: number;
+  INCLINATION: number; // degrees
+  RA_OF_ASC_NODE: number; // degrees
+  ARG_OF_PERICENTER: number; // degrees
+  MEAN_ANOMALY: number; // degrees
+  GM?: number; // km³/s² (gravitational parameter)
 
   // TLE-specific parameters
   EPHEMERIS_TYPE?: number;
@@ -39,9 +115,14 @@ export interface OMMData {
   NORAD_CAT_ID: number;
   ELEMENT_SET_NO?: number;
   REV_AT_EPOCH?: number;
-  BSTAR: number;
-  MEAN_MOTION_DOT: number;
-  MEAN_MOTION_DDOT?: number;
+  BSTAR: number; // 1/Earth radii
+  MEAN_MOTION_DOT: number; // rev/day²
+  MEAN_MOTION_DDOT?: number; // rev/day³
+
+  // Optional CCSDS sections
+  SPACECRAFT?: OMMSpacecraftParams;
+  COVARIANCE?: OMMCovariance;
+  USER_DEFINED?: OMMUserDefined;
 }
 
 /**
@@ -76,6 +157,60 @@ export function validateOMM(omm: Partial<OMMData>): omm is OMMData {
     if ((omm as Record<string, unknown>)[field] === undefined) {
       throw new Error(`Missing required OMM field: ${field}`);
     }
+  }
+
+  // Validate covariance if present
+  if (omm.COVARIANCE) {
+    validateCovariance(omm.COVARIANCE);
+  }
+
+  return true;
+}
+
+/**
+ * Validate covariance matrix (21 elements, positive semi-definite check on diagonal)
+ */
+export function validateCovariance(cov: Partial<OMMCovariance>): boolean {
+  const required = [
+    'CX_X',
+    'CY_X',
+    'CY_Y',
+    'CZ_X',
+    'CZ_Y',
+    'CZ_Z',
+    'CX_DOT_X',
+    'CX_DOT_Y',
+    'CX_DOT_Z',
+    'CX_DOT_X_DOT',
+    'CY_DOT_X',
+    'CY_DOT_Y',
+    'CY_DOT_Z',
+    'CY_DOT_X_DOT',
+    'CY_DOT_Y_DOT',
+    'CZ_DOT_X',
+    'CZ_DOT_Y',
+    'CZ_DOT_Z',
+    'CZ_DOT_X_DOT',
+    'CZ_DOT_Y_DOT',
+    'CZ_DOT_Z_DOT',
+  ];
+
+  for (const field of required) {
+    if (typeof (cov as Record<string, unknown>)[field] !== 'number') {
+      throw new Error(`Missing or invalid covariance element: ${field}`);
+    }
+  }
+
+  // Diagonal elements must be non-negative (variances)
+  if (
+    cov.CX_X! < 0 ||
+    cov.CY_Y! < 0 ||
+    cov.CZ_Z! < 0 ||
+    cov.CX_DOT_X_DOT! < 0 ||
+    cov.CY_DOT_Y_DOT! < 0 ||
+    cov.CZ_DOT_Z_DOT! < 0
+  ) {
+    throw new Error('Covariance diagonal elements (variances) must be non-negative');
   }
 
   return true;
@@ -230,9 +365,26 @@ export function ommToTLE(omm: OMMData): TLEOutput {
 }
 
 /**
+ * Options for TLE to OMM conversion
+ */
+export interface TLEToOMMOptions {
+  /** Optional covariance matrix to include */
+  covariance?: OMMCovariance;
+  /** Optional spacecraft parameters to include */
+  spacecraft?: OMMSpacecraftParams;
+  /** Optional user-defined parameters to include */
+  userDefined?: OMMUserDefined;
+}
+
+/**
  * Convert TLE to OMM JSON format
  */
-export function tleToOMM(line1: string, line2: string, objectName?: string): OMMData {
+export function tleToOMM(
+  line1: string,
+  line2: string,
+  objectName?: string,
+  options?: TLEToOMMOptions
+): OMMData {
   // Parse Line 1
   const catalogNumber = parseInt(line1.slice(2, 7).trim(), 10);
   const classification = line1[7];
@@ -277,7 +429,7 @@ export function tleToOMM(line1: string, line2: string, objectName?: string): OMM
   const fullIntlYear = parseInt(intlDesignatorYear, 10) >= 57 ? '19' + intlDesignatorYear : '20' + intlDesignatorYear;
   const objectId = `${fullIntlYear}-${intlDesignatorLaunch}${intlDesignatorPiece}`;
 
-  return {
+  const omm: OMMData = {
     CCSDS_OMM_VERS: '2.0',
     CREATION_DATE: new Date().toISOString(),
     ORIGINATOR: 'SPICE-SGP4',
@@ -303,6 +455,19 @@ export function tleToOMM(line1: string, line2: string, objectName?: string): OMM
     MEAN_MOTION_DOT: meanMotionDot,
     MEAN_MOTION_DDOT: meanMotionDdot,
   };
+
+  // Add optional sections if provided
+  if (options?.covariance) {
+    omm.COVARIANCE = options.covariance;
+  }
+  if (options?.spacecraft) {
+    omm.SPACECRAFT = options.spacecraft;
+  }
+  if (options?.userDefined) {
+    omm.USER_DEFINED = options.userDefined;
+  }
+
+  return omm;
 }
 
 /**

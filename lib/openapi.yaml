@@ -683,6 +683,114 @@ components:
         MEAN_MOTION_DDOT:
           type: number
           description: Second derivative of mean motion (rev/day^3)
+        SEMI_MAJOR_AXIS:
+          type: number
+          description: Semi-major axis in km (alternative to MEAN_MOTION)
+        GM:
+          type: number
+          description: Gravitational parameter (km^3/s^2)
+        REF_FRAME_EPOCH:
+          type: string
+          description: Reference frame epoch (ISO 8601)
+        SPACECRAFT:
+          $ref: '#/components/schemas/OMMSpacecraftParams'
+        COVARIANCE:
+          $ref: '#/components/schemas/OMMCovariance'
+        USER_DEFINED:
+          type: object
+          additionalProperties: true
+          description: User-defined key-value pairs
+
+    OMMSpacecraftParams:
+      type: object
+      description: Spacecraft physical parameters
+      properties:
+        MASS:
+          type: number
+          description: Spacecraft mass (kg)
+        SOLAR_RAD_AREA:
+          type: number
+          description: Solar radiation pressure area (m^2)
+        SOLAR_RAD_COEFF:
+          type: number
+          description: Solar radiation pressure coefficient (dimensionless)
+        DRAG_AREA:
+          type: number
+          description: Atmospheric drag area (m^2)
+        DRAG_COEFF:
+          type: number
+          description: Drag coefficient (dimensionless)
+
+    OMMCovariance:
+      type: object
+      description: 6x6 position/velocity covariance matrix (lower triangular, 21 elements)
+      properties:
+        COV_REF_FRAME:
+          type: string
+          description: Reference frame for covariance
+        CX_X:
+          type: number
+          description: Position X variance (km^2)
+        CY_X:
+          type: number
+          description: Position Y-X covariance (km^2)
+        CY_Y:
+          type: number
+          description: Position Y variance (km^2)
+        CZ_X:
+          type: number
+          description: Position Z-X covariance (km^2)
+        CZ_Y:
+          type: number
+          description: Position Z-Y covariance (km^2)
+        CZ_Z:
+          type: number
+          description: Position Z variance (km^2)
+        CX_DOT_X:
+          type: number
+          description: Velocity X - Position X covariance (km^2/s)
+        CX_DOT_Y:
+          type: number
+          description: Velocity X - Position Y covariance (km^2/s)
+        CX_DOT_Z:
+          type: number
+          description: Velocity X - Position Z covariance (km^2/s)
+        CX_DOT_X_DOT:
+          type: number
+          description: Velocity X variance (km^2/s^2)
+        CY_DOT_X:
+          type: number
+          description: Velocity Y - Position X covariance (km^2/s)
+        CY_DOT_Y:
+          type: number
+          description: Velocity Y - Position Y covariance (km^2/s)
+        CY_DOT_Z:
+          type: number
+          description: Velocity Y - Position Z covariance (km^2/s)
+        CY_DOT_X_DOT:
+          type: number
+          description: Velocity Y - Velocity X covariance (km^2/s^2)
+        CY_DOT_Y_DOT:
+          type: number
+          description: Velocity Y variance (km^2/s^2)
+        CZ_DOT_X:
+          type: number
+          description: Velocity Z - Position X covariance (km^2/s)
+        CZ_DOT_Y:
+          type: number
+          description: Velocity Z - Position Y covariance (km^2/s)
+        CZ_DOT_Z:
+          type: number
+          description: Velocity Z - Position Z covariance (km^2/s)
+        CZ_DOT_X_DOT:
+          type: number
+          description: Velocity Z - Velocity X covariance (km^2/s^2)
+        CZ_DOT_Y_DOT:
+          type: number
+          description: Velocity Z - Velocity Y covariance (km^2/s^2)
+        CZ_DOT_Z_DOT:
+          type: number
+          description: Velocity Z variance (km^2/s^2)
 
     OMMPropagateInput:
       type: object
