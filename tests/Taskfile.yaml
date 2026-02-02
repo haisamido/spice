@@ -129,19 +129,56 @@ tasks:
       - echo "http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step=60&unit=sec&output_type=txt&body=%7B%22line1%22%3A%221%2025544U%2098067A%20%20%2024015.50000000%20%20.00016717%20%2000000-0%20%2010270-3%200%20%209025%22%2C%22line2%22%3A%222%2025544%20%2051.6400%20208.9163%200006703%20%2030.0825%20330.0579%2015.49560830%20%20%20%2019%22%7D"
 
   api:propagate:tle:t0:tf:txt:parallel:
-    desc: Run propagate POST in parallel (default 10 runs, 2-hour range, 60-sec step)
+    desc: Run propagate POST in parallel (RUNS=total requests, PARALLEL=concurrency)
     vars:
       RUNS: '{{.RUNS | default "10"}}'
+      PARALLEL: '{{.PARALLEL | default "100"}}'
       # Compact TLE JSON for POST body (no newlines)
       TLE_JSON: '{"line1":"1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025","line2":"2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"}'
     cmds:
-      - echo "=== Running {{.RUNS}} parallel POST requests (t0 to tf, 2 hours, 60-sec step) ==="
+      - echo "=== Running {{.RUNS}} requests ({{.PARALLEL}} concurrent) ==="
       - cmd: |
+          # Health check - verify server is responding
+          if ! curl -sf --connect-timeout 3 {{.API_BASE}}/health > /dev/null 2>&1; then
+            echo "ERROR: Server not responding at {{.API_BASE}}/health"
+            echo "Start the server with: task container:start"
+            exit 1
+          fi
+      - cmd: |
+          TMPFILE=$(mktemp)
+
+          START_TIME=$(date -u '+%Y-%m-%d %H:%M:%S.%3N+00:00')
           START=$(date +%s.%N)
-          seq 1 {{.RUNS}} | xargs -P {{.RUNS}} -I {} curl -s -o /dev/null -w "Run {}: %{http_code} in %{time_total}s\n" -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&output_type=txt" -H "Content-Type:application/json" -d '{{.TLE_JSON}}'
+
+          seq 1 {{.RUNS}} | xargs -P {{.PARALLEL}} -I {} curl -s --connect-timeout 5 --max-time 60 -o /dev/null -w "%{http_code} %{time_total}\n" -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&output_type=txt" -H "Content-Type:application/json" -d '{{.TLE_JSON}}' >> "$TMPFILE"
+
           END=$(date +%s.%N)
+          STOP_TIME=$(date -u '+%Y-%m-%d %H:%M:%S.%3N+00:00')
+
+          # Calculate response time stats
+          WALL_TIME=$(echo "$END - $START" | bc)
+          TOTAL=$(wc -l < "$TMPFILE" | tr -d ' ')
+          SUCCESS=$(grep -c "^200 " "$TMPFILE" || echo 0)
+          FAILED=$((TOTAL - SUCCESS))
+          TIMES=$(awk '{print $2}' "$TMPFILE")
+          RESP_MIN=$(echo "$TIMES" | sort -n | head -1)
+          RESP_MAX=$(echo "$TIMES" | sort -n | tail -1)
+          RESP_MEAN=$(echo "$TIMES" | awk '{sum+=$1} END {printf "%.3f", sum/NR}')
+
           echo ""
-          echo "Total wall time: $(echo "$END - $START" | bc)s for {{.RUNS}} parallel requests"
+          echo "=== Summary ==="
+          echo "Start time:      $START_TIME"
+          echo "Stop time:       $STOP_TIME"
+          echo "Concurrency:     {{.PARALLEL}}"
+          echo "Total requests:  $TOTAL"
+          echo "Successful:      $SUCCESS (HTTP 200)"
+          echo "Failed:          $FAILED"
+          echo "Response times:  min=${RESP_MIN}s  mean=${RESP_MEAN}s  max=${RESP_MAX}s"
+          echo "Wall time:       ${WALL_TIME}s"
+          echo "Throughput:      $(echo "scale=2; $TOTAL / $WALL_TIME" | bc) req/s"
+
+          rm -f "$TMPFILE"
+    silent: true
 
   api:parse:omm:
     desc: Test OMM parse endpoint
