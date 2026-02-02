@@ -128,6 +128,21 @@ tasks:
       - echo "Browser-pasteable URL (copy entire line):"
       - echo "http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step=60&unit=sec&output_type=txt&body=%7B%22line1%22%3A%221%2025544U%2098067A%20%20%2024015.50000000%20%20.00016717%20%2000000-0%20%2010270-3%200%20%209025%22%2C%22line2%22%3A%222%2025544%20%2051.6400%20208.9163%200006703%20%2030.0825%20330.0579%2015.49560830%20%20%20%2019%22%7D"
 
+  api:propagate:tle:t0:tf:txt:parallel:
+    desc: Run propagate POST in parallel (default 10 runs, 2-hour range, 60-sec step)
+    vars:
+      RUNS: '{{.RUNS | default "10"}}'
+      # Compact TLE JSON for POST body (no newlines)
+      TLE_JSON: '{"line1":"1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025","line2":"2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"}'
+    cmds:
+      - echo "=== Running {{.RUNS}} parallel POST requests (t0 to tf, 2 hours, 60-sec step) ==="
+      - cmd: |
+          START=$(date +%s.%N)
+          seq 1 {{.RUNS}} | xargs -P {{.RUNS}} -I {} curl -s -o /dev/null -w "Run {}: %{http_code} in %{time_total}s\n" -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&output_type=txt" -H "Content-Type:application/json" -d '{{.TLE_JSON}}'
+          END=$(date +%s.%N)
+          echo ""
+          echo "Total wall time: $(echo "$END - $START" | bc)s for {{.RUNS}} parallel requests"
+
   api:parse:omm:
     desc: Test OMM parse endpoint
     cmds:
