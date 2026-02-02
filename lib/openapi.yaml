@@ -169,7 +169,7 @@ paths:
             schema:
               oneOf:
                 - $ref: '#/components/schemas/TLEInput'
-                - $ref: '#/components/schemas/OMMPropagateInput'
+                - $ref: '#/components/schemas/OMMInput'
             examples:
               tle:
                 summary: TLE input
@@ -179,19 +179,18 @@ paths:
               omm:
                 summary: OMM input
                 value:
-                  omm:
-                    OBJECT_NAME: "ISS (ZARYA)"
-                    OBJECT_ID: "1998-067A"
-                    EPOCH: "2024-01-15T12:00:00.000"
-                    MEAN_MOTION: 15.49560830
-                    ECCENTRICITY: 0.0006703
-                    INCLINATION: 51.6400
-                    RA_OF_ASC_NODE: 208.9163
-                    ARG_OF_PERICENTER: 30.0825
-                    MEAN_ANOMALY: 330.0579
-                    NORAD_CAT_ID: 25544
-                    BSTAR: 0.00010270
-                    MEAN_MOTION_DOT: 0.00016717
+                  OBJECT_NAME: "ISS (ZARYA)"
+                  OBJECT_ID: "1998-067A"
+                  EPOCH: "2024-01-15T12:00:00.000"
+                  MEAN_MOTION: 15.49560830
+                  ECCENTRICITY: 0.0006703
+                  INCLINATION: 51.6400
+                  RA_OF_ASC_NODE: 208.9163
+                  ARG_OF_PERICENTER: 30.0825
+                  MEAN_ANOMALY: 330.0579
+                  NORAD_CAT_ID: 25544
+                  BSTAR: 0.00010270
+                  MEAN_MOTION_DOT: 0.00016717
       responses:
         '200':
           description: Successfully propagated
@@ -875,14 +874,6 @@ components:
         CZ_DOT_Z_DOT:
           type: number
           description: Velocity Z variance (km^2/s^2)
-
-    OMMPropagateInput:
-      type: object
-      required:
-        - omm
-      properties:
-        omm:
-          $ref: '#/components/schemas/OMMInput'
 
     OMMParseResponse:
       type: object

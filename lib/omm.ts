@@ -445,7 +445,7 @@ export function tleToOMM(
     CCSDS_OMM_VERS: '2.0',
     CREATION_DATE: new Date().toISOString(),
     ORIGINATOR: 'SPICE-SGP4',
-    OBJECT_NAME: objectName || `NORAD ${catalogNumber}`,
+    OBJECT_NAME: objectName || 'NOT_PROVIDED',
     OBJECT_ID: objectId,
     CENTER_NAME: 'EARTH',
     REF_FRAME: 'TEME',

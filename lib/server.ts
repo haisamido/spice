@@ -133,7 +133,7 @@ app.post(
  *
  * Query: ?t0=<UTC>[&tf=<UTC>&step=<number>&unit=sec|min][&wgs=wgs72|wgs84][&input_type=tle|omm]
  * Body for TLE (default): { line1: string, line2: string }
- * Body for OMM: { omm: OMMData }
+ * Body for OMM: OMMData (raw OMM object)
  *
  * If only t0 is provided: returns single state at t0
  * If t0, tf, step provided: returns array of states from t0 to tf
@@ -191,11 +191,7 @@ app.post(
     // Parse input based on input_type
     let tle;
     if (inputType === 'omm') {
-      const { omm } = req.body;
-      if (!omm) {
-        res.status(400).json({ error: 'Missing omm object in request body' });
-        return;
-      }
+      const omm = req.body as Partial<OMMData>;
       try {
         validateOMM(omm);
       } catch (err) {
