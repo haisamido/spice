@@ -81,7 +81,40 @@ Defined in [tests/Taskfile.yaml](tests/Taskfile.yaml) and included via the root 
 | `test:api:models:wgs84` | Test WGS-84 model details |
 | `test:api:omm:to-tle` | Test OMM to TLE conversion |
 | `test:api:tle:to-omm` | Test TLE to OMM conversion |
+| `test:api:propagate:tle:t0:tf:txt:parallel` | Run parallel load test |
 | `test:api:all` | Run all API tests (server must be running) |
+
+### Load Testing
+
+The parallel load test task runs concurrent requests against the propagate endpoint:
+
+```bash
+# Default: 10 requests with 100 concurrent connections
+task test:api:propagate:tle:t0:tf:txt:parallel
+
+# Custom runs and concurrency
+task test:api:propagate:tle:t0:tf:txt:parallel RUNS=10000 PARALLEL=200
+```
+
+**Parameters:**
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `RUNS` | 10 | Total number of requests |
+| `PARALLEL` | 100 | Maximum concurrent connections |
+
+**Output:**
+```
+=== Summary ===
+Start time:      2024-01-15 12:00:00.123+00:00
+Stop time:       2024-01-15 12:00:05.456+00:00
+Concurrency:     100
+Total requests:  1000
+Successful:      1000 (HTTP 200)
+Failed:          0
+Response times:  min=0.045s  mean=0.123s  max=0.456s
+Wall time:       5.333s
+Throughput:      187.50 req/s
+```
 
 ## API Documentation
 

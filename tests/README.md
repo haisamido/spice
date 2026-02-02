@@ -54,6 +54,12 @@ task container:test:api
 # Run individual API test
 task test:api:health
 task test:api:propagate:tle:t0:json
+
+# Run parallel load test (default: 10 requests, 100 concurrent)
+task test:api:propagate:tle:t0:tf:txt:parallel
+
+# Custom load test (10000 requests, 200 concurrent)
+task test:api:propagate:tle:t0:tf:txt:parallel RUNS=10000 PARALLEL=200
 ```
 
 ## Output Format
@@ -116,3 +122,51 @@ curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:0
 ### SGP4 Tests ([sgp4/](sgp4/))
 
 - **SGP4 WASM Module**: Tests initialization, TLE parsing, time conversion, and orbit propagation
+
+## Load Testing
+
+The parallel load test task (`test:api:propagate:tle:t0:tf:txt:parallel`) runs concurrent requests against the propagate endpoint.
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `RUNS` | 10 | Total number of requests to send |
+| `PARALLEL` | 100 | Maximum concurrent connections |
+
+### Usage
+
+```bash
+# Default: 10 requests with up to 100 concurrent
+task test:api:propagate:tle:t0:tf:txt:parallel
+
+# High volume: 100,000 requests with 200 concurrent
+task test:api:propagate:tle:t0:tf:txt:parallel RUNS=100000 PARALLEL=200
+```
+
+### Output
+
+The task outputs a summary with:
+
+- **Start/Stop time**: UTC timestamps with milliseconds
+- **Concurrency**: Maximum parallel connections used
+- **Total requests**: Number of requests completed
+- **Successful/Failed**: HTTP 200 vs other responses
+- **Response times**: Min, mean, and max response times
+- **Wall time**: Total elapsed time
+- **Throughput**: Requests per second
+
+Example output:
+
+```
+=== Summary ===
+Start time:      2024-01-15 12:00:00.123+00:00
+Stop time:       2024-01-15 12:00:05.456+00:00
+Concurrency:     100
+Total requests:  1000
+Successful:      1000 (HTTP 200)
+Failed:          0
+Response times:  min=0.045s  mean=0.123s  max=0.456s
+Wall time:       5.333s
+Throughput:      187.50 req/s
+```
