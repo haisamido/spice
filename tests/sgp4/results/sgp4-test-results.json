@@ -1,5 +1,4 @@
 {
-  "timestamp": "2026-02-02T14:51:35.371Z",
   "suite": "SGP4 WASM Module",
   "tests": {
     "LEO position": {

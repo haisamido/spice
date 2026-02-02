@@ -43,7 +43,6 @@ describe('SGP4 WASM Module', () => {
 
   // Store test results for output
   const testResults: Record<string, unknown> = {
-    timestamp: new Date().toISOString(),
     suite: 'SGP4 WASM Module',
     tests: {} as Record<string, unknown>,
   };

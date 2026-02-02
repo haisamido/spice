@@ -162,8 +162,13 @@ paths:
             type: integer
             minimum: 1
             maximum: 1209602
+        - name: body
+          in: query
+          description: URL-encoded JSON body (alternative to POST body). When provided, this overrides the request body.
+          schema:
+            type: string
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
@@ -204,6 +209,95 @@ paths:
               example: |
                 datetime,et,x,y,z,vx,vy,vz
                 2024-01-15T12:00:00.000,758592069.18,-5945.93,-3284.80,0.29,2.31,-4.16,6.01
+        '400':
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: Propagate TLE or OMM (browser-friendly)
+      description: |
+        Same as POST but accepts all input via query parameters. Useful for direct browser access.
+
+        **IMPORTANT**: The `body` parameter must be fully URL-encoded. All special characters including `{`, `}`, `:`, `,`, `"`, and spaces must be percent-encoded.
+
+        **Browser-pasteable ISS example**:
+        ```
+        /api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&output_type=json&body=%7B%22line1%22%3A%221%2025544U%2098067A%20%20%2024015.50000000%20%20.00016717%20%2000000-0%20%2010270-3%200%20%209025%22%2C%22line2%22%3A%222%2025544%20%2051.6400%20208.9163%200006703%20%2030.0825%20330.0579%2015.49560830%20%20%20%2019%22%7D
+        ```
+      tags:
+        - SPICE/SGP4
+      parameters:
+        - name: t0
+          in: query
+          required: true
+          description: Start time / single time (UTC string, e.g., "2024-01-15T12:00:00")
+          schema:
+            type: string
+        - name: tf
+          in: query
+          required: false
+          description: End time (UTC string). Required for range mode.
+          schema:
+            type: string
+        - name: step
+          in: query
+          required: false
+          description: Time step size. Required for range mode.
+          schema:
+            type: number
+        - name: unit
+          in: query
+          description: Time step unit (only used in range mode)
+          schema:
+            type: string
+            enum: [sec, min]
+            default: sec
+        - name: wgs
+          in: query
+          description: Geophysical model to use
+          schema:
+            type: string
+            enum: [wgs72, wgs84]
+            default: wgs72
+        - name: input_type
+          in: query
+          description: Input format type
+          schema:
+            type: string
+            enum: [tle, omm]
+            default: tle
+        - name: output_type
+          in: query
+          description: Output format (json or txt). TXT format returns CSV with datetime,et,x,y,z,vx,vy,vz columns.
+          schema:
+            type: string
+            enum: [json, txt]
+            default: txt
+        - name: batch_size
+          in: query
+          description: Number of rows to buffer before flushing to client (txt output only).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1209602
+        - name: body
+          in: query
+          required: true
+          description: URL-encoded JSON containing TLE ({"line1":"...","line2":"..."}) or OMM data.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully propagated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropagateRangeResponse'
+            text/csv:
+              schema:
+                type: string
         '400':
           description: Missing or invalid parameters
           content:

@@ -1,5 +1,4 @@
 {
-  "timestamp": "2026-02-02T14:51:35.371Z",
   "suite": "OMM CCSDS Compliance",
   "tests": {
     "tleToOMM": {
@@ -9,9 +8,9 @@
       },
       "output": {
         "CCSDS_OMM_VERS": "2.0",
-        "CREATION_DATE": "2026-02-02T14:51:35.394Z",
+        "CREATION_DATE": "2026-02-02T19:47:20.599Z",
         "ORIGINATOR": "SPICE-SGP4",
-        "OBJECT_NAME": "NORAD 25544",
+        "OBJECT_NAME": "NOT_PROVIDED",
         "OBJECT_ID": "1998-067A",
         "CENTER_NAME": "EARTH",
         "REF_FRAME": "TEME",

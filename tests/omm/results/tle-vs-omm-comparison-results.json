@@ -1,5 +1,4 @@
 {
-  "timestamp": "2026-02-02T14:51:35.380Z",
   "suite": "TLE vs OMM Propagation Comparison",
   "tests": {
     "time_range_propagation": {

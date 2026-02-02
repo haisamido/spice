@@ -39,7 +39,6 @@ function writeTestResult(filename: string, data: unknown): void {
 describe('OMM CCSDS Compliance', () => {
   // Store test results for output
   const testResults: Record<string, unknown> = {
-    timestamp: new Date().toISOString(),
     suite: 'OMM CCSDS Compliance',
     tests: {} as Record<string, unknown>,
   };
@@ -335,7 +334,6 @@ describe('TLE vs OMM Propagation Comparison', () => {
 
   // Store comparison test results for output
   const comparisonResults: Record<string, unknown> = {
-    timestamp: new Date().toISOString(),
     suite: 'TLE vs OMM Propagation Comparison',
     tests: {} as Record<string, unknown>,
   };

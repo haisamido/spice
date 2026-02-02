@@ -128,17 +128,17 @@ app.post(
 );
 
 /**
- * POST /api/spice/sgp4/propagate
+ * GET/POST /api/spice/sgp4/propagate
  * Unified propagation endpoint for TLE or OMM input
  *
- * Query: ?t0=<UTC>[&tf=<UTC>&step=<number>&unit=sec|min][&wgs=wgs72|wgs84][&input_type=tle|omm]
- * Body for TLE (default): { line1: string, line2: string }
- * Body for OMM: OMMData (raw OMM object)
+ * Query: ?t0=<UTC>[&tf=<UTC>&step=<number>&unit=sec|min][&wgs=wgs72|wgs84][&input_type=tle|omm][&body=<JSON>]
+ * Body (POST only): { line1: string, line2: string } for TLE or OMMData for OMM
+ * Alternative: Pass body as URL-encoded JSON in 'body' query parameter (works with GET)
  *
  * If only t0 is provided: returns single state at t0
  * If t0, tf, step provided: returns array of states from t0 to tf
  */
-app.post(
+app.all(
   '/api/spice/sgp4/propagate',
   asyncHandler(async (req: Request, res: Response) => {
     const t0 = req.query.t0 as string | undefined;
@@ -177,6 +177,18 @@ app.post(
       }
     }
 
+    // Support body as query parameter (URL-encoded JSON) or POST body
+    const bodyParam = req.query.body as string | undefined;
+    let body = req.body;
+    if (bodyParam) {
+      try {
+        body = JSON.parse(bodyParam);
+      } catch {
+        res.status(400).json({ error: 'Invalid JSON in body query parameter' });
+        return;
+      }
+    }
+
     // Model selection
     const modelName = queryModel || DEFAULT_MODEL;
     const constants = getWgsConstants(modelName);
@@ -191,7 +203,7 @@ app.post(
     // Parse input based on input_type
     let tle;
     if (inputType === 'omm') {
-      const omm = req.body as Partial<OMMData>;
+      const omm = body as Partial<OMMData>;
       try {
         validateOMM(omm);
       } catch (err) {
@@ -201,7 +213,7 @@ app.post(
       const tleOutput = ommToTLE(omm as OMMData);
       tle = sgp4.parseTLE(tleOutput.line1, tleOutput.line2);
     } else {
-      const { line1, line2 } = req.body;
+      const { line1, line2 } = body;
       if (!line1 || !line2) {
         res.status(400).json({ error: 'Missing line1 or line2' });
         return;
@@ -219,8 +231,7 @@ app.post(
       if (outputType === 'txt') {
         const header = 'datetime,et,x,y,z,vx,vy,vz';
         const row = `${utc},${et0},${state.position.x},${state.position.y},${state.position.z},${state.velocity.vx},${state.velocity.vy},${state.velocity.vz}`;
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename="propagation.csv"');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.send(`${header}\n${row}\n`);
         return;
       }
@@ -281,8 +292,7 @@ app.post(
 
     // Stream txt output in batches for better performance
     if (outputType === 'txt') {
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="propagation.csv"');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
 
       let buffer = 'datetime,et,x,y,z,vx,vy,vz\n';
       let count = 0;
