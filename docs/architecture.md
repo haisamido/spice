@@ -263,6 +263,7 @@ sequenceDiagram
 | `wgs` | `wgs72`, `wgs84` | `wgs72` | Geophysical model |
 | `input_type` | `tle`, `omm` | `tle` | Input format |
 | `output_type` | `json`, `txt` | `txt` | Output format |
+| `batch_size` | 1-1209602 | 1209 | Rows per batch (txt only) |
 
 **Limits:** Maximum of 1,209,602 points per request (14 days at 1-second resolution).
 

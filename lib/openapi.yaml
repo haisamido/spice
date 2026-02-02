@@ -155,6 +155,13 @@ paths:
             type: string
             enum: [json, txt]
             default: txt
+        - name: batch_size
+          in: query
+          description: Number of rows to buffer before flushing to client (txt output only). Larger values reduce overhead but increase memory usage. Default is floor(MAX_POINTS/1000) = 1209 (~115KB per batch).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1209602
       requestBody:
         required: true
         content:

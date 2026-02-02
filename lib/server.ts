@@ -148,6 +148,7 @@ app.post(
     const queryModel = req.query.wgs as string | undefined;
     const inputType = (req.query.input_type as string) || 'tle';
     const outputType = (req.query.output_type as string) || 'txt';
+    const batchSizeStr = req.query.batch_size as string | undefined;
 
     if (!t0) {
       res.status(400).json({ error: 'Missing t0 query parameter' });
@@ -162,6 +163,18 @@ app.post(
     if (outputType !== 'json' && outputType !== 'txt') {
       res.status(400).json({ error: 'Invalid output_type (must be json or txt)' });
       return;
+    }
+
+    // Parse and validate batch_size (for txt streaming)
+    let batchSize = BATCH_SIZE;
+    if (batchSizeStr) {
+      batchSize = parseInt(batchSizeStr, 10);
+      if (isNaN(batchSize) || batchSize < 1 || batchSize > MAX_POINTS) {
+        res.status(400).json({
+          error: `Invalid batch_size (must be integer between 1 and ${MAX_POINTS})`,
+        });
+        return;
+      }
     }
 
     // Model selection
@@ -284,7 +297,7 @@ app.post(
         buffer += `${utc},${et},${state.position.x},${state.position.y},${state.position.z},${state.velocity.vx},${state.velocity.vy},${state.velocity.vz}\n`;
         count++;
 
-        if (count >= BATCH_SIZE) {
+        if (count >= batchSize) {
           res.write(buffer);
           buffer = '';
           count = 0;

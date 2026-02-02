@@ -73,6 +73,7 @@ Defined in [tests/Taskfile.yaml](tests/Taskfile.yaml) and included via the root 
 | `test:api:propagate:omm:t0:tf:txt` | Test OMM propagate (time range, txt output) |
 | `test:api:propagate:omm:t0:tf:json` | Test OMM propagate (time range, json output) |
 | `test:api:propagate:wgs84` | Test propagate with WGS-84 model |
+| `test:api:propagate:batch-size` | Test propagate with custom batch_size |
 | `test:api:utc-to-et` | Test UTC to ET conversion |
 | `test:api:et-to-utc` | Test ET to UTC conversion |
 | `test:api:models` | Test models list endpoint |
@@ -120,6 +121,7 @@ The unified `/api/spice/sgp4/propagate` endpoint supports both TLE and OMM input
 | `wgs` | `wgs72`, `wgs84` | `wgs72` | Geophysical model |
 | `input_type` | `tle`, `omm` | `tle` | Input format |
 | `output_type` | `json`, `txt` | `txt` | Output format |
+| `batch_size` | 1-1209602 | 1209 | Rows per batch (txt only) |
 
 **Limits:** Maximum of 1,209,602 points per request (14 days at 1-second resolution).
 
