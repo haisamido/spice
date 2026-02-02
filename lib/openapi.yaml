@@ -144,13 +144,13 @@ paths:
             type: string
             enum: [tle, omm]
             default: tle
-        - name: format
+        - name: output_type
           in: query
-          description: Output format (json or csv). CSV format returns datetime,et,x,y,z,vx,vy,vz columns.
+          description: Output format (json or txt). TXT format returns CSV with datetime,et,x,y,z,vx,vy,vz columns.
           schema:
             type: string
-            enum: [json, csv]
-            default: json
+            enum: [json, txt]
+            default: txt
       requestBody:
         required: true
         content:

@@ -85,12 +85,12 @@ datetime,et,x,y,z,vx,vy,vz
 | `x`, `y`, `z` | Cartesian position in TEME frame | km |
 | `vx`, `vy`, `vz` | Cartesian velocity in TEME frame | km/s |
 
-### API CSV Output
+### API TXT Output
 
-The REST API also supports CSV output format via the `format=csv` query parameter:
+The REST API supports TXT (CSV) output format via the `output_type=txt` query parameter (default):
 
 ```bash
-curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&format=csv" \
+curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&output_type=txt" \
   -H "Content-Type: application/json" \
   -d '{"line1": "...", "line2": "..."}'
 ```

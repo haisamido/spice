@@ -62,8 +62,14 @@ task --list
 | `test:api:parse:tle` | Test TLE parse endpoint |
 | `test:api:parse:omm` | Test OMM parse endpoint |
 | `test:api:propagate:tle:t0` | Test TLE propagate (single time) |
+| `test:api:propagate:tle:t0:txt` | Test TLE propagate (single time, txt output) |
+| `test:api:propagate:tle:t0:json` | Test TLE propagate (single time, json output) |
 | `test:api:propagate:tle:t0:tf` | Test TLE propagate (time range) |
+| `test:api:propagate:tle:t0:tf:txt` | Test TLE propagate (time range, txt output) |
+| `test:api:propagate:tle:t0:tf:json` | Test TLE propagate (time range, json output) |
 | `test:api:propagate:omm:t0:tf` | Test OMM propagate (time range) |
+| `test:api:propagate:omm:t0:tf:txt` | Test OMM propagate (time range, txt output) |
+| `test:api:propagate:omm:t0:tf:json` | Test OMM propagate (time range, json output) |
 | `test:api:propagate:wgs84` | Test propagate with WGS-84 model |
 | `test:api:utc-to-et` | Test UTC to ET conversion |
 | `test:api:et-to-utc` | Test ET to UTC conversion |
@@ -111,7 +117,7 @@ The unified `/api/spice/sgp4/propagate` endpoint supports both TLE and OMM input
 | `unit` | `sec`, `min` | `sec` | Step unit |
 | `wgs` | `wgs72`, `wgs84` | `wgs72` | Geophysical model |
 | `input_type` | `tle`, `omm` | `tle` | Input format |
-| `format` | `json`, `csv` | `json` | Output format |
+| `output_type` | `json`, `txt` | `txt` | Output format |
 
 ```bash
 # Single time propagation (TLE input, default)
@@ -130,8 +136,8 @@ curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:0
     "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
   }'
 
-# CSV output format
-curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&format=csv" \
+# TXT output format (CSV)
+curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&output_type=txt" \
   -H "Content-Type: application/json" \
   -d '{
     "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",

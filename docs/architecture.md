@@ -262,11 +262,19 @@ sequenceDiagram
 | `unit` | `sec`, `min` | `sec` | Step unit |
 | `wgs` | `wgs72`, `wgs84` | `wgs72` | Geophysical model |
 | `input_type` | `tle`, `omm` | `tle` | Input format |
-| `format` | `json`, `csv` | `json` | Output format |
+| `output_type` | `json`, `txt` | `txt` | Output format |
 
 ### Output Formats
 
-**JSON format** (default):
+**TXT format** (default, `output_type=txt`):
+
+```
+datetime,et,x,y,z,vx,vy,vz
+2024-01-15T12:00:00.000,758592069.18,-5945.93,-3284.80,0.29,2.31,-4.16,6.01
+```
+
+**JSON format** (`output_type=json`):
+
 ```json
 {
   "states": [
@@ -281,12 +289,6 @@ sequenceDiagram
   "model": "wgs72",
   "count": 1
 }
-```
-
-**CSV format** (`format=csv`):
-```
-datetime,et,x,y,z,vx,vy,vz
-2024-01-15T12:00:00.000,758592069.18,-5945.93,-3284.80,0.29,2.31,-4.16,6.01
 ```
 
 ## Container Architecture

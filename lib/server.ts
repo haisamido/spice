@@ -141,7 +141,7 @@ app.post(
     const unit = (req.query.unit as string) || 'sec';
     const queryModel = req.query.wgs as string | undefined;
     const inputType = (req.query.input_type as string) || 'tle';
-    const format = (req.query.format as string) || 'json';
+    const outputType = (req.query.output_type as string) || 'txt';
 
     if (!t0) {
       res.status(400).json({ error: 'Missing t0 query parameter' });
@@ -153,8 +153,8 @@ app.post(
       return;
     }
 
-    if (format !== 'json' && format !== 'csv') {
-      res.status(400).json({ error: 'Invalid format (must be json or csv)' });
+    if (outputType !== 'json' && outputType !== 'txt') {
+      res.status(400).json({ error: 'Invalid output_type (must be json or txt)' });
       return;
     }
 
@@ -201,7 +201,7 @@ app.post(
       const state = sgp4.propagate(tle, et0);
       const utc = sgp4.etToUTC(et0);
 
-      if (format === 'csv') {
+      if (outputType === 'txt') {
         const header = 'datetime,et,x,y,z,vx,vy,vz';
         const row = `${utc},${et0},${state.position.x},${state.position.y},${state.position.z},${state.velocity.vx},${state.velocity.vy},${state.velocity.vz}`;
         res.setHeader('Content-Type', 'text/csv');
@@ -284,7 +284,7 @@ app.post(
       });
     }
 
-    if (format === 'csv') {
+    if (outputType === 'txt') {
       const header = 'datetime,et,x,y,z,vx,vy,vz';
       const rows = states.map((s) =>
         `${s.datetime},${s.et},${s.position[0]},${s.position[1]},${s.position[2]},${s.velocity[0]},${s.velocity[1]},${s.velocity[2]}`
