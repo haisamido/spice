@@ -50,20 +50,22 @@ erDiagram
     }
 
     StateVector {
-        object position "x, y, z in km"
-        object velocity "vx, vy, vz in km/s"
+        string datetime "UTC timestamp"
+        number et "Ephemeris Time"
+        array position "[x, y, z] in km"
+        array velocity "[vx, vy, vz] in km/s"
     }
 
     Position {
-        number x "km"
-        number y "km"
-        number z "km"
+        number x "km (index 0)"
+        number y "km (index 1)"
+        number z "km (index 2)"
     }
 
     Velocity {
-        number vx "km/s"
-        number vy "km/s"
-        number vz "km/s"
+        number vx "km/s (index 0)"
+        number vy "km/s (index 1)"
+        number vz "km/s (index 2)"
     }
 
     WGSModel {
@@ -85,16 +87,21 @@ erDiagram
     PropagationRequest {
         string line1 "TLE Line 1"
         string line2 "TLE Line 2"
-        string_or_number time "UTC or ET"
-        boolean minutes_from_epoch "Optional flag"
-        string model "Optional: wgs72/wgs84"
+        string t0 "Start time (UTC)"
+        string tf "End time (UTC, optional)"
+        number step "Time step (optional)"
+        string unit "sec or min"
+        string model "wgs72 or wgs84"
+        string input_type "tle or omm"
+        string format "json or csv"
     }
 
     PropagationResponse {
-        object position "Position vector"
-        object velocity "Velocity vector"
+        array states "Array of StateVectors"
         number epoch "TLE epoch in ET"
         string model "Model used"
+        number count "Number of states"
+        string format "Output format used"
     }
 
     TLE ||--|| StateVector : "propagates to"
@@ -233,7 +240,10 @@ sequenceDiagram
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/spice/sgp4/parse` | Parse TLE and return orbital elements |
-| POST | `/api/spice/sgp4/propagate` | Propagate TLE to specific time |
+| POST | `/api/spice/sgp4/propagate` | Propagate TLE/OMM (supports JSON/CSV output) |
+| POST | `/api/spice/sgp4/omm/parse` | Parse OMM JSON and return orbital elements |
+| POST | `/api/spice/sgp4/omm/to-tle` | Convert OMM to TLE format |
+| POST | `/api/spice/sgp4/tle/to-omm` | Convert TLE to OMM format |
 | GET | `/api/spice/sgp4/time/utc-to-et` | Convert UTC to Ephemeris Time |
 | GET | `/api/spice/sgp4/time/et-to-utc` | Convert Ephemeris Time to UTC |
 | GET | `/api/spice/sgp4/health` | Health check endpoint |
@@ -241,6 +251,43 @@ sequenceDiagram
 | GET | `/api/models/wgs/:name` | Get specific WGS model details |
 | GET | `/api/docs` | Interactive Swagger UI documentation |
 | GET | `/api/openapi.json` | OpenAPI specification |
+
+### Propagate Query Parameters
+
+| Parameter | Values | Default | Description |
+|-----------|--------|---------|-------------|
+| `t0` | UTC string | (required) | Start time |
+| `tf` | UTC string | - | End time (for range mode) |
+| `step` | number | - | Time step (for range mode) |
+| `unit` | `sec`, `min` | `sec` | Step unit |
+| `wgs` | `wgs72`, `wgs84` | `wgs72` | Geophysical model |
+| `input_type` | `tle`, `omm` | `tle` | Input format |
+| `format` | `json`, `csv` | `json` | Output format |
+
+### Output Formats
+
+**JSON format** (default):
+```json
+{
+  "states": [
+    {
+      "datetime": "2024-01-15T12:00:00.000",
+      "et": 758592069.18,
+      "position": [-5945.93, -3284.80, 0.29],
+      "velocity": [2.31, -4.16, 6.01]
+    }
+  ],
+  "epoch": 758592069.18,
+  "model": "wgs72",
+  "count": 1
+}
+```
+
+**CSV format** (`format=csv`):
+```
+datetime,et,x,y,z,vx,vy,vz
+2024-01-15T12:00:00.000,758592069.18,-5945.93,-3284.80,0.29,2.31,-4.16,6.01
+```
 
 ## Container Architecture
 

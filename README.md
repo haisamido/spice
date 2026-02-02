@@ -61,11 +61,15 @@ task --list
 | `test:api:health` | Test health endpoint |
 | `test:api:parse:tle` | Test TLE parse endpoint |
 | `test:api:parse:omm` | Test OMM parse endpoint |
-| `test:api:propagate:tle` | Test TLE propagate endpoint |
-| `test:api:propagate:range` | Test TLE propagate range endpoint |
-| `test:api:propagate:omm` | Test OMM propagate endpoint |
+| `test:api:propagate:tle:t0` | Test TLE propagate (single time) |
+| `test:api:propagate:tle:t0:tf` | Test TLE propagate (time range) |
+| `test:api:propagate:omm:t0:tf` | Test OMM propagate (time range) |
+| `test:api:propagate:wgs84` | Test propagate with WGS-84 model |
 | `test:api:utc-to-et` | Test UTC to ET conversion |
 | `test:api:et-to-utc` | Test ET to UTC conversion |
+| `test:api:models` | Test models list endpoint |
+| `test:api:models:wgs72` | Test WGS-72 model details |
+| `test:api:models:wgs84` | Test WGS-84 model details |
 | `test:api:omm:to-tle` | Test OMM to TLE conversion |
 | `test:api:tle:to-omm` | Test TLE to OMM conversion |
 | `test:api:all` | Run all API tests (server must be running) |
@@ -96,7 +100,18 @@ curl -X POST http://localhost:50000/api/spice/sgp4/parse \
 
 ### Propagate (Unified Endpoint)
 
-The unified `/api/spice/sgp4/propagate` endpoint supports both TLE and OMM input formats via `input_type` parameter.
+The unified `/api/spice/sgp4/propagate` endpoint supports both TLE and OMM input formats via `input_type` parameter, and JSON or CSV output via `format` parameter.
+
+**Query Parameters:**
+| Parameter | Values | Default | Description |
+|-----------|--------|---------|-------------|
+| `t0` | UTC string | (required) | Start time |
+| `tf` | UTC string | - | End time (for range mode) |
+| `step` | number | - | Time step (for range mode) |
+| `unit` | `sec`, `min` | `sec` | Step unit |
+| `wgs` | `wgs72`, `wgs84` | `wgs72` | Geophysical model |
+| `input_type` | `tle`, `omm` | `tle` | Input format |
+| `format` | `json`, `csv` | `json` | Output format |
 
 ```bash
 # Single time propagation (TLE input, default)
@@ -108,13 +123,21 @@ curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:0
   }'
 
 # Time range propagation (2 hours with 60-second steps)
-# Parameters: t0, tf (UTC), step (number), unit (sec|min), wgs (wgs72|wgs84), input_type (tle|omm)
 curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec" \
   -H "Content-Type: application/json" \
   -d '{
     "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
     "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
   }'
+
+# CSV output format
+curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&format=csv" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+    "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+  }'
+# Returns: datetime,et,x,y,z,vx,vy,vz
 
 # Propagate with OMM input
 curl -X POST "http://localhost:50000/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm" \

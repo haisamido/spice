@@ -4,17 +4,35 @@
  * Tests for the NAIF CSPICE SGP4 WebAssembly module.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import { createSGP4, type SGP4Module } from '../dist/index.js';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createSGP4, type SGP4Module } from '../../dist/index.js';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Results directory for this test suite
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const RESULTS_DIR = join(__dirname, 'results');
+
+// Ensure results directory exists
+mkdirSync(RESULTS_DIR, { recursive: true });
+
+/**
+ * Write test results to the results directory
+ */
+function writeTestResult(filename: string, data: unknown): void {
+  const filepath = join(RESULTS_DIR, filename);
+  writeFileSync(filepath, JSON.stringify(data, null, 2));
+}
 
 describe('SGP4 WASM Module', () => {
   let sgp4: SGP4Module;
 
-  // ISS TLE for testing (example from NAIF documentation)
-  // Note: Replace with current TLE for production use
+  // ISS TLE for testing (same as OMM tests for consistency)
   const ISS_TLE = {
-    line1: '1 25544U 98067A   21275.52628786  .00001878  00000-0  42420-4 0  9993',
-    line2: '2 25544  51.6442 208.5455 0003632 357.8838  93.5765 15.48919755305790',
+    line1: '1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025',
+    line2: '2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19',
   };
 
   // Test satellite with known expected values
@@ -23,9 +41,21 @@ describe('SGP4 WASM Module', () => {
     line2: '2 43908  97.2676  47.2136 0020001 220.6050 139.3698 15.24999521 78544',
   };
 
+  // Store test results for output
+  const testResults: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    suite: 'SGP4 WASM Module',
+    tests: {} as Record<string, unknown>,
+  };
+
   beforeAll(async () => {
     sgp4 = await createSGP4();
     await sgp4.init();
+  });
+
+  afterAll(() => {
+    // Write collected test results
+    writeTestResult('sgp4-test-results.json', testResults);
   });
 
   describe('initialization', () => {
@@ -153,6 +183,14 @@ describe('SGP4 WASM Module', () => {
           state.position.z ** 2
       );
 
+      // Store result for output
+      testResults.tests['LEO position'] = {
+        position: state.position,
+        velocity: state.velocity,
+        distance_km: r,
+        epoch_et: tle.epoch,
+      };
+
       // ISS should be in LEO: above Earth surface (~6371 km) and below ~7000 km
       expect(r).toBeGreaterThan(6400);
       expect(r).toBeLessThan(6900);
@@ -200,6 +238,68 @@ describe('SGP4 WASM Module', () => {
       expect(state1.position.x).not.toEqual(state2.position.x);
       expect(state1.position.y).not.toEqual(state2.position.y);
       expect(state1.position.z).not.toEqual(state2.position.z);
+    });
+
+    it('should generate full propagation results over time range', () => {
+      const tle = sgp4.parseTLE(ISS_TLE.line1, ISS_TLE.line2);
+
+      const states: Array<{
+        et: number;
+        minutes_from_epoch: number;
+        position: [number, number, number];
+        velocity: [number, number, number];
+      }> = [];
+
+      // Propagation: 2 hours with 1-minute steps
+      for (let minutes = 0; minutes <= 120; minutes++) {
+        const state = sgp4.propagateMinutes(tle, minutes);
+        states.push({
+          et: tle.epoch + minutes * 60,
+          minutes_from_epoch: minutes,
+          position: [state.position.x, state.position.y, state.position.z],
+          velocity: [state.velocity.vx, state.velocity.vy, state.velocity.vz],
+        });
+      }
+
+      // Write full propagation results (same format as OMM tests for comparison)
+      writeTestResult('propagation-results.json', {
+        input: {
+          tle: ISS_TLE,
+        },
+        parameters: {
+          t0: '2024-01-15T12:00:00',
+          tf: '2024-01-15T14:00:00',
+          step_seconds: 60,
+          state_count: states.length,
+        },
+        states: states.map((s) => ({
+          et: s.et,
+          datetime: sgp4.etToUTC(s.et),
+          position: s.position,
+          velocity: s.velocity,
+        })),
+      });
+
+      // Write tabular results (CSV format)
+      const header = 'datetime,et,x,y,z,vx,vy,vz\n';
+      const rows = states.map((s) => {
+        const dt = sgp4.etToUTC(s.et);
+        return `${dt},${s.et},${s.position[0]},${s.position[1]},${s.position[2]},${s.velocity[0]},${s.velocity[1]},${s.velocity[2]}`;
+      }).join('\n');
+      writeFileSync(join(RESULTS_DIR, 'propagation-results.txt'), header + rows);
+
+      // Store summary in test results
+      (testResults.tests as Record<string, unknown>)['propagation_range'] = {
+        duration_hours: 2,
+        step_minutes: 1,
+        state_count: states.length,
+        first_state: states[0],
+        last_state: states[states.length - 1],
+      };
+
+      expect(states.length).toBe(121);
+      expect(Number.isFinite(states[0].position[0])).toBe(true);
+      expect(Number.isFinite(states[120].position[0])).toBe(true);
     });
 
     it('should propagate using minutes from epoch', () => {

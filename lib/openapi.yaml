@@ -144,6 +144,13 @@ paths:
             type: string
             enum: [tle, omm]
             default: tle
+        - name: format
+          in: query
+          description: Output format (json or csv). CSV format returns datetime,et,x,y,z,vx,vy,vz columns.
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
       requestBody:
         required: true
         content:
@@ -181,6 +188,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PropagateRangeResponse'
+            text/csv:
+              schema:
+                type: string
+              example: |
+                datetime,et,x,y,z,vx,vy,vz
+                2024-01-15T12:00:00.000,758592069.18,-5945.93,-3284.80,0.29,2.31,-4.16,6.01
         '400':
           description: Missing or invalid parameters
           content:
@@ -241,6 +254,19 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/OMMInput'
+            example:
+              OBJECT_NAME: "ISS (ZARYA)"
+              OBJECT_ID: "1998-067A"
+              EPOCH: "2024-01-15T12:00:00.000"
+              MEAN_MOTION: 15.49560830
+              ECCENTRICITY: 0.0006703
+              INCLINATION: 51.6400
+              RA_OF_ASC_NODE: 208.9163
+              ARG_OF_PERICENTER: 30.0825
+              MEAN_ANOMALY: 330.0579
+              NORAD_CAT_ID: 25544
+              BSTAR: 0.00010270
+              MEAN_MOTION_DOT: 0.00016717
       responses:
         '200':
           description: Successfully converted to TLE
@@ -267,6 +293,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TLEInput'
+            example:
+              line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
+              line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+              name: "ISS (ZARYA)"
       responses:
         '200':
           description: Successfully converted to OMM
@@ -398,6 +428,9 @@ components:
         line2:
           type: string
           description: TLE line 2 (69 characters)
+        name:
+          type: string
+          description: Satellite name (optional, used for TLE to OMM conversion)
 
     PropagateInput:
       type: object
@@ -427,30 +460,22 @@ components:
           enum: [wgs72, wgs84]
 
     Position:
-      type: object
-      properties:
-        x:
-          type: number
-          description: X coordinate (km)
-        y:
-          type: number
-          description: Y coordinate (km)
-        z:
-          type: number
-          description: Z coordinate (km)
+      type: array
+      items:
+        type: number
+      minItems: 3
+      maxItems: 3
+      description: Cartesian position [x, y, z] in TEME frame (km)
+      example: [-5945.93, -3284.80, 0.29]
 
     Velocity:
-      type: object
-      properties:
-        vx:
-          type: number
-          description: X velocity (km/s)
-        vy:
-          type: number
-          description: Y velocity (km/s)
-        vz:
-          type: number
-          description: Z velocity (km/s)
+      type: array
+      items:
+        type: number
+      minItems: 3
+      maxItems: 3
+      description: Cartesian velocity [vx, vy, vz] in TEME frame (km/s)
+      example: [2.31, -4.16, 6.01]
 
     HealthResponse:
       type: object
@@ -472,6 +497,9 @@ components:
           items:
             type: number
           description: 10-element orbital elements array
+      example:
+        epoch: 758592069.184
+        elements: [0.0006703, 51.64, 208.9163, 30.0825, 330.0579, 15.4956083, 0.00016717, 0.0, 0.0001027, 0.0]
 
     PropagateResponse:
       type: object
@@ -495,12 +523,12 @@ components:
           items:
             type: object
             properties:
-              time:
-                type: string
-                description: UTC time string
               et:
                 type: number
                 description: Ephemeris time (seconds past J2000 TDB)
+              datetime:
+                type: string
+                description: UTC calendar representation (ISO 8601)
               position:
                 $ref: '#/components/schemas/Position'
               velocity:
@@ -526,6 +554,21 @@ components:
         unit:
           type: string
           description: Time step unit (sec or min)
+        input_type:
+          type: string
+          description: Input format used (tle or omm)
+          enum: [tle, omm]
+      example:
+        states:
+          - datetime: "2024-01-15T12:00:00.000"
+            et: 758592069.18
+            position: [-5945.93, -3284.80, 0.29]
+            velocity: [2.31, -4.16, 6.01]
+        epoch: 758592069.18
+        model: "wgs72"
+        count: 1
+        t0: "2024-01-15T12:00:00"
+        input_type: "tle"
 
     UTCtoETResponse:
       type: object
@@ -533,6 +576,8 @@ components:
         et:
           type: number
           description: Ephemeris time (seconds past J2000 TDB)
+      example:
+        et: 758592069.184
 
     ETtoUTCResponse:
       type: object
@@ -540,16 +585,22 @@ components:
         utc:
           type: string
           description: UTC time string
+      example:
+        utc: "2024-01-15T12:00:00.000"
 
     ModelsListResponse:
       type: object
       properties:
-        models:
+        wgs:
           type: array
           items:
             type: string
-        default:
-          type: string
+          description: List of available WGS model names
+      example:
+        wgs:
+          - wgs72
+          - wgs72old
+          - wgs84
 
     GeophysicalConstants:
       type: object
@@ -594,6 +645,28 @@ components:
           type: object
           additionalProperties:
             type: string
+      example:
+        name: "WGS-72"
+        description: "World Geodetic System 1972 constants for SGP4"
+        source: "Vallado, Revisiting Spacetrack Report #3"
+        constants:
+          J2: 0.001082616
+          J3: -0.00000253881
+          J4: -0.00000165597
+          KE: 0.0743669161
+          QO: 120.0
+          SO: 78.0
+          RE: 6378.135
+          AE: 1.0
+        units:
+          J2: "dimensionless"
+          J3: "dimensionless"
+          J4: "dimensionless"
+          KE: "earth-radii^(3/2) / minute"
+          QO: "km"
+          SO: "km"
+          RE: "km"
+          AE: "distance units / Earth radius"
 
     OMMInput:
       type: object
@@ -818,6 +891,12 @@ components:
               type: string
             line2:
               type: string
+      example:
+        epoch: 758592069.184
+        elements: [0.0006703, 51.64, 208.9163, 30.0825, 330.0579, 15.4956083, 0.00016717, 0.0, 0.0001027, 0.0]
+        tle:
+          line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
+          line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
 
     OMMOutput:
       $ref: '#/components/schemas/OMMInput'
@@ -834,6 +913,10 @@ components:
         name:
           type: string
           description: Satellite name (optional)
+      example:
+        line1: "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025"
+        line2: "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+        name: "ISS (ZARYA)"
 
     Error:
       type: object

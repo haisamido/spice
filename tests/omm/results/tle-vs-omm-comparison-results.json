@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-02-02T14:51:35.380Z",
+  "suite": "TLE vs OMM Propagation Comparison",
+  "tests": {
+    "time_range_propagation": {
+      "duration_hours": 2,
+      "step_seconds": 60,
+      "state_count": 121,
+      "max_position_diff_km": 0,
+      "max_velocity_diff_km_s": 0
+    }
+  }
+}

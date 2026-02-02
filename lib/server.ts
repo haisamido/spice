@@ -141,6 +141,7 @@ app.post(
     const unit = (req.query.unit as string) || 'sec';
     const queryModel = req.query.wgs as string | undefined;
     const inputType = (req.query.input_type as string) || 'tle';
+    const format = (req.query.format as string) || 'json';
 
     if (!t0) {
       res.status(400).json({ error: 'Missing t0 query parameter' });
@@ -149,6 +150,11 @@ app.post(
 
     if (inputType !== 'tle' && inputType !== 'omm') {
       res.status(400).json({ error: 'Invalid input_type (must be tle or omm)' });
+      return;
+    }
+
+    if (format !== 'json' && format !== 'csv') {
+      res.status(400).json({ error: 'Invalid format (must be json or csv)' });
       return;
     }
 
@@ -194,13 +200,23 @@ app.post(
     if (!tf && !stepStr) {
       const state = sgp4.propagate(tle, et0);
       const utc = sgp4.etToUTC(et0);
+
+      if (format === 'csv') {
+        const header = 'datetime,et,x,y,z,vx,vy,vz';
+        const row = `${utc},${et0},${state.position.x},${state.position.y},${state.position.z},${state.velocity.vx},${state.velocity.vy},${state.velocity.vz}`;
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="propagation.csv"');
+        res.send(`${header}\n${row}\n`);
+        return;
+      }
+
       res.json({
         states: [
           {
-            time: utc,
+            datetime: utc,
             et: et0,
-            position: state.position,
-            velocity: state.velocity,
+            position: [state.position.x, state.position.y, state.position.z],
+            velocity: [state.velocity.vx, state.velocity.vy, state.velocity.vz],
           },
         ],
         epoch: tle.epoch,
@@ -251,21 +267,32 @@ app.post(
 
     // Propagate over time range
     const states: Array<{
-      time: string;
+      datetime: string;
       et: number;
-      position: { x: number; y: number; z: number };
-      velocity: { vx: number; vy: number; vz: number };
+      position: [number, number, number];
+      velocity: [number, number, number];
     }> = [];
 
     for (let et = et0; et <= etf; et += stepSeconds) {
       const state = sgp4.propagate(tle, et);
       const utc = sgp4.etToUTC(et);
       states.push({
-        time: utc,
+        datetime: utc,
         et: et,
-        position: state.position,
-        velocity: state.velocity,
+        position: [state.position.x, state.position.y, state.position.z],
+        velocity: [state.velocity.vx, state.velocity.vy, state.velocity.vz],
       });
+    }
+
+    if (format === 'csv') {
+      const header = 'datetime,et,x,y,z,vx,vy,vz';
+      const rows = states.map((s) =>
+        `${s.datetime},${s.et},${s.position[0]},${s.position[1]},${s.position[2]},${s.velocity[0]},${s.velocity[1]},${s.velocity[2]}`
+      ).join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="propagation.csv"');
+      res.send(`${header}\n${rows}\n`);
+      return;
     }
 
     res.json({

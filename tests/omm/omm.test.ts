@@ -4,7 +4,7 @@
  * Tests for CCSDS 502.0-B-2/B-3 Orbital Mean-Elements Message compliance.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   OMMData,
   OMMCovariance,
@@ -14,10 +14,41 @@ import {
   validateCovariance,
   ommToTLE,
   tleToOMM,
-} from '../lib/omm.js';
-import { createSGP4, type SGP4Module } from '../dist/index.js';
+} from '../../lib/omm.js';
+import { createSGP4, type SGP4Module } from '../../dist/index.js';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Results directory for this test suite
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const RESULTS_DIR = join(__dirname, 'results');
+
+// Ensure results directory exists
+mkdirSync(RESULTS_DIR, { recursive: true });
+
+/**
+ * Write test results to the results directory
+ */
+function writeTestResult(filename: string, data: unknown): void {
+  const filepath = join(RESULTS_DIR, filename);
+  writeFileSync(filepath, JSON.stringify(data, null, 2));
+}
 
 describe('OMM CCSDS Compliance', () => {
+  // Store test results for output
+  const testResults: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    suite: 'OMM CCSDS Compliance',
+    tests: {} as Record<string, unknown>,
+  };
+
+  afterAll(() => {
+    // Write collected test results
+    writeTestResult('omm-compliance-results.json', testResults);
+  });
+
   // ISS TLE for testing
   const ISS_LINE1 =
     '1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025';
@@ -182,6 +213,12 @@ describe('OMM CCSDS Compliance', () => {
     it('should produce CCSDS-compliant output', () => {
       const omm = tleToOMM(ISS_LINE1, ISS_LINE2);
 
+      // Store result for output
+      testResults.tests['tleToOMM'] = {
+        input: { line1: ISS_LINE1, line2: ISS_LINE2 },
+        output: omm,
+      };
+
       // Check CCSDS header fields
       expect(omm.CCSDS_OMM_VERS).toBe('2.0');
       expect(omm.CREATION_DATE).toBeDefined();
@@ -296,6 +333,13 @@ describe('OMM CCSDS Compliance', () => {
 describe('TLE vs OMM Propagation Comparison', () => {
   let sgp4: SGP4Module;
 
+  // Store comparison test results for output
+  const comparisonResults: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    suite: 'TLE vs OMM Propagation Comparison',
+    tests: {} as Record<string, unknown>,
+  };
+
   // ISS TLE for comparison testing
   const ISS_LINE1 =
     '1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025';
@@ -305,6 +349,11 @@ describe('TLE vs OMM Propagation Comparison', () => {
   beforeAll(async () => {
     sgp4 = await createSGP4();
     await sgp4.init();
+  });
+
+  afterAll(() => {
+    // Write comparison test results
+    writeTestResult('tle-vs-omm-comparison-results.json', comparisonResults);
   });
 
   it('should produce identical single-point propagation results at epoch', () => {
@@ -354,14 +403,36 @@ describe('TLE vs OMM Propagation Comparison', () => {
     const tf = sgp4.utcToET('2024-01-15T14:00:00');
     const stepSeconds = 60;
 
-    // Track maximum differences
+    // Track maximum differences and collect states
     let maxPosDiff = 0;
     let maxVelDiff = 0;
     let stateCount = 0;
+    const tleStates: Array<{
+      et: number;
+      position: [number, number, number];
+      velocity: [number, number, number];
+    }> = [];
+    const ommStates: Array<{
+      et: number;
+      position: [number, number, number];
+      velocity: [number, number, number];
+    }> = [];
 
     for (let et = t0; et <= tf; et += stepSeconds) {
       const tleState = sgp4.propagate(tleParsed, et);
       const ommState = sgp4.propagate(ommParsed, et);
+
+      // Collect actual states
+      tleStates.push({
+        et: et,
+        position: [tleState.position.x, tleState.position.y, tleState.position.z],
+        velocity: [tleState.velocity.vx, tleState.velocity.vy, tleState.velocity.vz],
+      });
+      ommStates.push({
+        et: et,
+        position: [ommState.position.x, ommState.position.y, ommState.position.z],
+        velocity: [ommState.velocity.vx, ommState.velocity.vy, ommState.velocity.vz],
+      });
 
       const posDiff = Math.sqrt(
         (tleState.position.x - ommState.position.x) ** 2 +
@@ -379,6 +450,49 @@ describe('TLE vs OMM Propagation Comparison', () => {
       maxVelDiff = Math.max(maxVelDiff, velDiff);
       stateCount++;
     }
+
+    // Store range comparison results with full state data
+    comparisonResults.tests['time_range_propagation'] = {
+      duration_hours: 2,
+      step_seconds: stepSeconds,
+      state_count: stateCount,
+      max_position_diff_km: maxPosDiff,
+      max_velocity_diff_km_s: maxVelDiff,
+    };
+
+    // Write full propagation results to separate file
+    writeTestResult('propagation-results.json', {
+      input: {
+        tle: { line1: ISS_LINE1, line2: ISS_LINE2 },
+        omm: omm,
+      },
+      parameters: {
+        t0: '2024-01-15T12:00:00',
+        tf: '2024-01-15T14:00:00',
+        step_seconds: stepSeconds,
+        state_count: stateCount,
+      },
+      states: tleStates.map((s) => ({
+        et: s.et,
+        datetime: sgp4.etToUTC(s.et),
+        position: s.position,
+        velocity: s.velocity,
+      })),
+      omm_states: ommStates.map((s) => ({
+        et: s.et,
+        datetime: sgp4.etToUTC(s.et),
+        position: s.position,
+        velocity: s.velocity,
+      })),
+    });
+
+    // Write tabular results (CSV format)
+    const header = 'datetime,et,x,y,z,vx,vy,vz\n';
+    const rows = tleStates.map((s) => {
+      const dt = sgp4.etToUTC(s.et);
+      return `${dt},${s.et},${s.position[0]},${s.position[1]},${s.position[2]},${s.velocity[0]},${s.velocity[1]},${s.velocity[2]}`;
+    }).join('\n');
+    writeFileSync(join(RESULTS_DIR, 'propagation-results.txt'), header + rows);
 
     // Over 2 hours, expect < 50 km position difference and < 0.05 km/s velocity
     // These bounds account for TLE format precision limits causing accumulated drift
