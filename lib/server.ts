@@ -5,6 +5,7 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
+import compression from 'compression';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
 import { fileURLToPath } from 'url';
@@ -19,6 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+app.use(compression());
 app.use(express.json());
 
 let sgp4: SGP4Module;
@@ -32,6 +34,17 @@ let GIT_HASH = process.env.GIT_COMMIT || '-';
 const MAX_POINTS = 1209602;
 // BATCH_SIZE = floor(MAX_POINTS / 1000) = floor(1209602 / 1000) = 1209
 const BATCH_SIZE = Math.floor(MAX_POINTS / 1000);
+
+// Cache duration in seconds (1 hour for propagation results)
+const CACHE_MAX_AGE = 3600;
+
+/**
+ * Generate ETag for caching based on request parameters
+ */
+function generateETag(params: Record<string, unknown>): string {
+  const hash = crypto.createHash('md5').update(JSON.stringify(params)).digest('hex');
+  return `"${hash}"`;
+}
 
 // Try to get git hash if not provided
 if (GIT_HASH === '-') {
@@ -221,6 +234,21 @@ app.all(
       tle = sgp4.parseTLE(line1, line2);
     }
 
+    // Generate ETag for caching based on request parameters
+    const cacheParams = { t0, tf, step: stepStr, unit, model: modelName, inputType, outputType, body };
+    const etag = generateETag(cacheParams);
+
+    // Check If-None-Match header for cache validation
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    // Set caching headers
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', `public, max-age=${CACHE_MAX_AGE}`);
+
     const et0 = sgp4.utcToET(t0);
 
     // Single time mode: only t0 provided
@@ -317,36 +345,39 @@ app.all(
       return;
     }
 
-    // Buffer states for JSON output
-    const states: Array<{
-      datetime: string;
-      et: number;
-      position: [number, number, number];
-      velocity: [number, number, number];
-    }> = [];
+    // Stream JSON output for O(1) memory usage
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+    // Write opening of JSON object and states array
+    res.write(`{"states":[`);
+
+    let stateCount = 0;
+    let isFirst = true;
 
     for (let et = et0; et <= etf; et += stepSeconds) {
       const state = sgp4.propagate(tle, et);
       const utc = sgp4.etToUTC(et);
-      states.push({
+
+      const stateObj = {
         datetime: utc,
         et: et,
         position: [state.position.x, state.position.y, state.position.z],
         velocity: [state.velocity.vx, state.velocity.vy, state.velocity.vz],
-      });
+      };
+
+      // Add comma separator before all but first element
+      if (!isFirst) {
+        res.write(',');
+      }
+      isFirst = false;
+
+      res.write(JSON.stringify(stateObj));
+      stateCount++;
     }
 
-    res.json({
-      states,
-      epoch: tle.epoch,
-      model: modelName,
-      count: states.length,
-      t0,
-      tf,
-      step,
-      unit,
-      input_type: inputType,
-    });
+    // Write closing of states array and metadata
+    res.write(`],"epoch":${tle.epoch},"model":"${modelName}","count":${stateCount},"t0":"${t0}","tf":"${tf}","step":${step},"unit":"${unit}","input_type":"${inputType}"}`);
+    res.end();
   })
 );
 
