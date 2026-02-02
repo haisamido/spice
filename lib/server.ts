@@ -256,7 +256,8 @@ app.post(
     const stepSeconds = unit === 'min' ? step * 60 : step;
 
     // Limit number of points to prevent memory issues
-    const maxPoints = 10000;
+    // 14 days × 86,400 sec/day = 1,209,600 + 1 endpoint + 1 header = 1,209,602
+    const maxPoints = 1209602;
     const estimatedPoints = Math.ceil((etf - et0) / stepSeconds) + 1;
     if (estimatedPoints > maxPoints) {
       res.status(400).json({

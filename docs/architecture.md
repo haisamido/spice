@@ -264,6 +264,8 @@ sequenceDiagram
 | `input_type` | `tle`, `omm` | `tle` | Input format |
 | `output_type` | `json`, `txt` | `txt` | Output format |
 
+**Limits:** Maximum of 1,209,602 points per request (14 days at 1-second resolution).
+
 ### Output Formats
 
 **TXT format** (default, `output_type=txt`):

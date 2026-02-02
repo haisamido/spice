@@ -103,7 +103,7 @@ paths:
         **Single time mode**: Provide only `t0` to get one state vector at that time.
 
         **Range mode**: Provide `t0`, `tf`, and `step` to get an array of state vectors
-        from t0 to tf at each step interval. Maximum of 10,000 points allowed per request.
+        from t0 to tf at each step interval. Maximum of 1,209,602 points allowed per request (14 days at 1-second resolution).
 
         **Input format**: Use `input_type=tle` (default) for TLE input or `input_type=omm` for OMM input.
       tags:
