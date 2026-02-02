@@ -32,11 +32,15 @@ servers:
     description: Local development server
 
 tags:
-  - name: SGP4
-    description: Satellite propagation endpoints (TLE format)
-  - name: OMM
-    description: Orbital Mean-Elements Message endpoints (JSON format)
-  - name: Time
+  - name: SPICE
+    description: NASA/JPL NAIF SPICE endpoints
+  - name: SPICE/SGP4
+    description: Satellite propagation endpoints
+  - name: SPICE/SGP4/TLE
+    description: Two-Line Element (TLE) format endpoints
+  - name: SPICE/SGP4/OMM
+    description: Orbital Mean-Elements Message (OMM) endpoints
+  - name: SPICE/SGP4/Time
     description: Time conversion endpoints
   - name: Models
     description: Geophysical model endpoints
@@ -47,7 +51,7 @@ paths:
       summary: Health check
       description: Check if the API server is running and the SGP4 module is initialized.
       tags:
-        - SGP4
+        - SPICE/SGP4
       responses:
         '200':
           description: Server is healthy
@@ -66,7 +70,7 @@ paths:
         Parse a Two-Line Element (TLE) set into orbital elements.
         Returns the epoch and 10-element array used by the SGP4 propagator.
       tags:
-        - SGP4
+        - SPICE/SGP4/TLE
       requestBody:
         required: true
         content:
@@ -103,7 +107,7 @@ paths:
 
         **Input format**: Use `input_type=tle` (default) for TLE input or `input_type=omm` for OMM input.
       tags:
-        - SGP4
+        - SPICE/SGP4
       parameters:
         - name: t0
           in: query
@@ -208,7 +212,7 @@ paths:
         Parse an Orbital Mean-Elements Message (OMM) JSON into orbital elements.
         Also returns the equivalent TLE representation.
       tags:
-        - OMM
+        - SPICE/SGP4/OMM
       requestBody:
         required: true
         content:
@@ -247,7 +251,7 @@ paths:
       summary: Convert OMM to TLE
       description: Convert an Orbital Mean-Elements Message (OMM) JSON to Two-Line Element format.
       tags:
-        - OMM
+        - SPICE/SGP4/OMM
       requestBody:
         required: true
         content:
@@ -286,7 +290,7 @@ paths:
       summary: Convert TLE to OMM
       description: Convert a Two-Line Element set to Orbital Mean-Elements Message (OMM) JSON format.
       tags:
-        - OMM
+        - SPICE/SGP4/TLE
       requestBody:
         required: true
         content:
@@ -318,7 +322,7 @@ paths:
         Convert a UTC time string to Ephemeris Time (ET).
         ET is measured in seconds past J2000 TDB (Barycentric Dynamical Time).
       tags:
-        - Time
+        - SPICE/SGP4/Time
       parameters:
         - name: utc
           in: query
@@ -348,7 +352,7 @@ paths:
         Convert Ephemeris Time (ET) to a UTC time string.
         ET is measured in seconds past J2000 TDB.
       tags:
-        - Time
+        - SPICE/SGP4/Time
       parameters:
         - name: et
           in: query
