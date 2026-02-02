@@ -56,6 +56,8 @@ task --list
 
 ### API Test Tasks
 
+Defined in [tests/Taskfile.yaml](tests/Taskfile.yaml) and included via the root Taskfile.
+
 | Task | Description |
 |------|-------------|
 | `test:api:health` | Test health endpoint |

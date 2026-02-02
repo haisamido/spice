@@ -7,6 +7,7 @@ This directory contains the test suites and their results.
 ```
 tests/
 ├── README.md                    # This file
+├── Taskfile.yaml                # API test tasks (included by root Taskfile)
 ├── setup.ts                     # Shared test utilities
 ├── omm/
 │   ├── omm.test.ts              # OMM CCSDS compliance tests
@@ -41,8 +42,18 @@ tests/
 ## Running Tests
 
 ```bash
-# Run tests in Docker (results written to ./tests/<test>/results/)
+# Run unit tests in Docker (results written to ./tests/<test>/results/)
 task container:test
+
+# Run API tests (server must be running)
+task test:api:all
+
+# Start server, run all API tests, then stop
+task container:test:api
+
+# Run individual API test
+task test:api:health
+task test:api:propagate:tle:t0:json
 ```
 
 ## Output Format

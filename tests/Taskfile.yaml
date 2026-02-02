@@ -1,0 +1,303 @@
+# API Test Tasks for SPICE
+# https://taskfile.dev
+#
+# These tasks are included by the root Taskfile.yaml
+# Invoke with: task test:api:health, task test:api:all, etc.
+
+version: '3'
+
+vars:
+  SERVICE_HOST_PORT: '{{.SERVICE_HOST_PORT | default "50000"}}'
+  API_BASE: http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4
+
+tasks:
+  api:health:
+    desc: Test health endpoint
+    cmds:
+      - echo "=== Testing Health Endpoint ==="
+      - curl -s {{.API_BASE}}/health | jq .
+
+  api:parse:tle:
+    desc: Test TLE parse endpoint
+    cmds:
+      - echo "=== Testing TLE Parse Endpoint ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/parse \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  api:propagate:tle:t0:
+    desc: Test TLE propagate (single time, t0 only)
+    cmds:
+      - echo "=== Testing TLE Propagate (t0 only) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  api:propagate:tle:t0:txt:
+    desc: Test TLE propagate (single time, txt output)
+    cmds:
+      - echo "=== Testing TLE Propagate (t0, txt output) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&output_type=txt" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }'
+
+  api:propagate:tle:t0:json:
+    desc: Test TLE propagate (single time, json output)
+    cmds:
+      - echo "=== Testing TLE Propagate (t0, json output) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&output_type=json" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  api:propagate:tle:t0:tf:
+    desc: Test TLE propagate (time range, t0 to tf)
+    cmds:
+      - echo "=== Testing TLE Propagate (t0 to tf, 60-sec step) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  api:propagate:tle:t0:tf:txt:
+    desc: Test TLE propagate (time range, txt output)
+    cmds:
+      - echo "=== Testing TLE Propagate (t0 to tf, txt output) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&output_type=txt" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }'
+
+  api:propagate:tle:t0:tf:json:
+    desc: Test TLE propagate (time range, json output)
+    cmds:
+      - echo "=== Testing TLE Propagate (t0 to tf, json output) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&output_type=json" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  api:utc-to-et:
+    desc: Test UTC to ET conversion endpoint
+    cmds:
+      - echo "=== Testing UTC to ET Conversion ==="
+      - curl -s "{{.API_BASE}}/time/utc-to-et?utc=2024-01-15T12:00:00" | jq .
+
+  api:et-to-utc:
+    desc: Test ET to UTC conversion endpoint
+    cmds:
+      - echo "=== Testing ET to UTC Conversion ==="
+      - curl -s "{{.API_BASE}}/time/et-to-utc?et=758894469.184" | jq .
+
+  api:models:
+    desc: Test models list endpoint
+    cmds:
+      - echo "=== Testing Models List ==="
+      - curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/ | jq .
+
+  api:models:wgs72:
+    desc: Test WGS-72 model details
+    cmds:
+      - echo "=== Testing WGS-72 Model ==="
+      - curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/wgs/wgs72 | jq .
+
+  api:models:wgs84:
+    desc: Test WGS-84 model details
+    cmds:
+      - echo "=== Testing WGS-84 Model ==="
+      - curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/wgs/wgs84 | jq .
+
+  api:propagate:wgs84:
+    desc: Test propagate with WGS-84 model
+    cmds:
+      - echo "=== Testing Propagate with WGS-84 ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&wgs=wgs84" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
+          }' | jq .
+
+  api:parse:omm:
+    desc: Test OMM parse endpoint
+    cmds:
+      - echo "=== Testing OMM Parse Endpoint ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/omm/parse \
+          -H "Content-Type: application/json" \
+          -d '{
+            "OBJECT_NAME": "ISS (ZARYA)",
+            "OBJECT_ID": "1998-067A",
+            "EPOCH": "2024-01-15T12:00:00.000",
+            "MEAN_MOTION": 15.49560830,
+            "ECCENTRICITY": 0.0006703,
+            "INCLINATION": 51.6400,
+            "RA_OF_ASC_NODE": 208.9163,
+            "ARG_OF_PERICENTER": 30.0825,
+            "MEAN_ANOMALY": 330.0579,
+            "NORAD_CAT_ID": 25544,
+            "BSTAR": 0.00010270,
+            "MEAN_MOTION_DOT": 0.00016717
+          }' | jq .
+
+  api:propagate:omm:t0:tf:
+    desc: Test OMM propagate (time range, t0 to tf)
+    cmds:
+      - echo "=== Testing OMM Propagate (t0 to tf, 60-sec step) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "omm": {
+              "OBJECT_NAME": "ISS (ZARYA)",
+              "OBJECT_ID": "1998-067A",
+              "EPOCH": "2024-01-15T12:00:00.000",
+              "MEAN_MOTION": 15.49560830,
+              "ECCENTRICITY": 0.0006703,
+              "INCLINATION": 51.6400,
+              "RA_OF_ASC_NODE": 208.9163,
+              "ARG_OF_PERICENTER": 30.0825,
+              "MEAN_ANOMALY": 330.0579,
+              "NORAD_CAT_ID": 25544,
+              "BSTAR": 0.00010270,
+              "MEAN_MOTION_DOT": 0.00016717
+            }
+          }' | jq .
+
+  api:propagate:omm:t0:tf:txt:
+    desc: Test OMM propagate (time range, txt output)
+    cmds:
+      - echo "=== Testing OMM Propagate (t0 to tf, txt output) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm&output_type=txt" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "omm": {
+              "OBJECT_NAME": "ISS (ZARYA)",
+              "OBJECT_ID": "1998-067A",
+              "EPOCH": "2024-01-15T12:00:00.000",
+              "MEAN_MOTION": 15.49560830,
+              "ECCENTRICITY": 0.0006703,
+              "INCLINATION": 51.6400,
+              "RA_OF_ASC_NODE": 208.9163,
+              "ARG_OF_PERICENTER": 30.0825,
+              "MEAN_ANOMALY": 330.0579,
+              "NORAD_CAT_ID": 25544,
+              "BSTAR": 0.00010270,
+              "MEAN_MOTION_DOT": 0.00016717
+            }
+          }'
+
+  api:propagate:omm:t0:tf:json:
+    desc: Test OMM propagate (time range, json output)
+    cmds:
+      - echo "=== Testing OMM Propagate (t0 to tf, json output) ==="
+      - |
+        curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-15T14:00:00&step=60&unit=sec&input_type=omm&output_type=json" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "omm": {
+              "OBJECT_NAME": "ISS (ZARYA)",
+              "OBJECT_ID": "1998-067A",
+              "EPOCH": "2024-01-15T12:00:00.000",
+              "MEAN_MOTION": 15.49560830,
+              "ECCENTRICITY": 0.0006703,
+              "INCLINATION": 51.6400,
+              "RA_OF_ASC_NODE": 208.9163,
+              "ARG_OF_PERICENTER": 30.0825,
+              "MEAN_ANOMALY": 330.0579,
+              "NORAD_CAT_ID": 25544,
+              "BSTAR": 0.00010270,
+              "MEAN_MOTION_DOT": 0.00016717
+            }
+          }' | jq .
+
+  api:omm:to-tle:
+    desc: Test OMM to TLE conversion
+    cmds:
+      - echo "=== Testing OMM to TLE Conversion ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/omm/to-tle \
+          -H "Content-Type: application/json" \
+          -d '{
+            "OBJECT_NAME": "ISS (ZARYA)",
+            "OBJECT_ID": "1998-067A",
+            "EPOCH": "2024-01-15T12:00:00.000",
+            "MEAN_MOTION": 15.49560830,
+            "ECCENTRICITY": 0.0006703,
+            "INCLINATION": 51.6400,
+            "RA_OF_ASC_NODE": 208.9163,
+            "ARG_OF_PERICENTER": 30.0825,
+            "MEAN_ANOMALY": 330.0579,
+            "NORAD_CAT_ID": 25544,
+            "BSTAR": 0.00010270,
+            "MEAN_MOTION_DOT": 0.00016717
+          }' | jq .
+
+  api:tle:to-omm:
+    desc: Test TLE to OMM conversion
+    cmds:
+      - echo "=== Testing TLE to OMM Conversion ==="
+      - |
+        curl -s -X POST {{.API_BASE}}/tle/to-omm \
+          -H "Content-Type: application/json" \
+          -d '{
+            "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
+            "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
+            "name": "ISS (ZARYA)"
+          }' | jq .
+
+  api:all:
+    desc: Run all API tests (server must be running)
+    cmds:
+      # Health
+      - task: api:health
+      # Parse
+      - task: api:parse:tle
+      - task: api:parse:omm
+      # Propagate
+      - task: api:propagate:tle:t0
+      - task: api:propagate:tle:t0:txt
+      - task: api:propagate:tle:t0:json
+      - task: api:propagate:tle:t0:tf
+      - task: api:propagate:tle:t0:tf:txt
+      - task: api:propagate:tle:t0:tf:json
+      - task: api:propagate:omm:t0:tf
+      - task: api:propagate:omm:t0:tf:txt
+      - task: api:propagate:omm:t0:tf:json
+      - task: api:propagate:wgs84
+      # Time Conversions
+      - task: api:utc-to-et
+      - task: api:et-to-utc
+      # Models
+      - task: api:models
+      - task: api:models:wgs72
+      - task: api:models:wgs84
+      # Conversions
+      - task: api:omm:to-tle
+      - task: api:tle:to-omm
