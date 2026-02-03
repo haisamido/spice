@@ -88,6 +88,7 @@ publish:
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   needs:
+    - build
     - test:unit
     - test:api
   before_script:
