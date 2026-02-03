@@ -62,51 +62,14 @@ test:api:
     - build
   before_script:
     - apk add --no-cache curl jq
+    # Install go-task
+    - sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
   script:
     - docker load < image.tar
     - docker compose up -d
     - sleep 5
-
-    # Health check
-    - curl -sf http://docker:50000/api/spice/sgp4/health | jq .
-
-    # Parse TLE
-    - |
-      curl -sf -X POST http://docker:50000/api/spice/sgp4/parse \
-        -H "Content-Type: application/json" \
-        -d '{
-          "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
-          "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"
-        }' | jq .
-
-    # Propagate TLE
-    - |
-      curl -sf -X POST http://docker:50000/api/spice/sgp4/propagate \
-        -H "Content-Type: application/json" \
-        -d '{
-          "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
-          "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
-          "time": "2024-01-15T12:00:00"
-        }' | jq .
-
-    # Time conversions
-    - curl -sf "http://docker:50000/api/spice/sgp4/time/utc-to-et?utc=2024-01-15T12:00:00" | jq .
-    - curl -sf "http://docker:50000/api/spice/sgp4/time/et-to-utc?et=758894469.184" | jq .
-
-    # Models API
-    - curl -sf http://docker:50000/api/models/ | jq .
-    - curl -sf http://docker:50000/api/models/wgs/wgs72 | jq .
-    - curl -sf http://docker:50000/api/models/wgs/wgs84 | jq .
-
-    # Propagate with WGS-84
-    - |
-      curl -sf -X POST "http://docker:50000/api/spice/sgp4/propagate?model=wgs84" \
-        -H "Content-Type: application/json" \
-        -d '{
-          "line1": "1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025",
-          "line2": "2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19",
-          "time": "2024-01-15T12:00:00"
-        }' | jq .
+    # Run API tests using Taskfile
+    - task test:api:ci API_HOST=docker
   after_script:
     - docker compose logs || true
     - docker compose down -v || true

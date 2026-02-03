@@ -7,8 +7,10 @@
 version: '3'
 
 vars:
+  API_HOST: '{{.API_HOST | default "localhost"}}'
   SERVICE_HOST_PORT: '{{.SERVICE_HOST_PORT | default "50000"}}'
-  API_BASE: 'http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4'
+  API_BASE: 'http://{{.API_HOST}}:{{.SERVICE_HOST_PORT}}/api/spice/sgp4'
+  MODELS_BASE: 'http://{{.API_HOST}}:{{.SERVICE_HOST_PORT}}/api/models'
 
   # ISS TLE test data (epoch: 2024-01-15)
   TLE_BODY: |
@@ -99,19 +101,19 @@ tasks:
     desc: Test models list endpoint
     cmds:
       - echo "=== Testing Models List ==="
-      - cmd: curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/ | jq .
+      - cmd: curl -s {{.MODELS_BASE}}/ | jq .
 
   api:models:wgs72:
     desc: Test WGS-72 model details
     cmds:
       - echo "=== Testing WGS-72 Model ==="
-      - cmd: curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/wgs/wgs72 | jq .
+      - cmd: curl -s {{.MODELS_BASE}}/wgs/wgs72 | jq .
 
   api:models:wgs84:
     desc: Test WGS-84 model details
     cmds:
       - echo "=== Testing WGS-84 Model ==="
-      - cmd: curl -s http://localhost:{{.SERVICE_HOST_PORT}}/api/models/wgs/wgs84 | jq .
+      - cmd: curl -s {{.MODELS_BASE}}/wgs/wgs84 | jq .
 
   api:propagate:wgs84:
     desc: Test propagate with WGS-84 model (default txt output)
@@ -126,7 +128,7 @@ tasks:
       - cmd: curl -s -G "{{.API_BASE}}/propagate" --data-urlencode "t0=2024-01-15T12:00:00" --data-urlencode "tf=2024-01-16T12:00:00" --data-urlencode "step=60" --data-urlencode "unit=sec" --data-urlencode "output_type=txt" --data-urlencode 'body={{.TLE_BODY}}'
       - echo ""
       - echo "Browser-pasteable URL (copy entire line):"
-      - echo "http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step=60&unit=sec&output_type=txt&body=%7B%22line1%22%3A%221%2025544U%2098067A%20%20%2024015.50000000%20%20.00016717%20%2000000-0%20%2010270-3%200%20%209025%22%2C%22line2%22%3A%222%2025544%20%2051.6400%20208.9163%200006703%20%2030.0825%20330.0579%2015.49560830%20%20%20%2019%22%7D"
+      - echo "http://{{.API_HOST}}:{{.SERVICE_HOST_PORT}}/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step=60&unit=sec&output_type=txt&body=%7B%22line1%22%3A%221%2025544U%2098067A%20%20%2024015.50000000%20%20.00016717%20%2000000-0%20%2010270-3%200%20%209025%22%2C%22line2%22%3A%222%2025544%20%2051.6400%20208.9163%200006703%20%2030.0825%20330.0579%2015.49560830%20%20%20%2019%22%7D"
 
   api:propagate:tle:t0:tf:txt:parallel:
     desc: Run propagate POST in parallel (RUNS=total requests, PARALLEL=concurrency)
@@ -234,6 +236,36 @@ tasks:
       - echo "=== Testing Propagate with batch_size=1209 ==="
       - cmd: curl -s -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-22T12:00:00&step=1&unit=sec&output_type=txt&batch_size=1209" -H "Content-Type:application/json" -d '{{.TLE_BODY}}'
     silent: true
+
+  api:ci:
+    desc: Run API tests for CI (fails fast on errors, uses -sf flag)
+    cmds:
+      - echo "=== CI API Tests (API_HOST={{.API_HOST}}) ==="
+      # Health check
+      - echo "Testing health endpoint..."
+      - curl -sf {{.API_BASE}}/health | jq .
+      # Parse TLE
+      - echo "Testing TLE parse..."
+      - curl -sf -X POST {{.API_BASE}}/parse -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
+      # Propagate TLE
+      - echo "Testing TLE propagate..."
+      - curl -sf -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00" -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
+      # Time conversions
+      - echo "Testing UTC to ET..."
+      - curl -sf "{{.API_BASE}}/time/utc-to-et?utc=2024-01-15T12:00:00" | jq .
+      - echo "Testing ET to UTC..."
+      - curl -sf "{{.API_BASE}}/time/et-to-utc?et=758894469.184" | jq .
+      # Models API
+      - echo "Testing models list..."
+      - curl -sf {{.MODELS_BASE}}/ | jq .
+      - echo "Testing WGS-72 model..."
+      - curl -sf {{.MODELS_BASE}}/wgs/wgs72 | jq .
+      - echo "Testing WGS-84 model..."
+      - curl -sf {{.MODELS_BASE}}/wgs/wgs84 | jq .
+      # Propagate with WGS-84
+      - echo "Testing propagate with WGS-84..."
+      - curl -sf -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&wgs=wgs84" -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
+      - echo "=== All CI tests passed ==="
 
   api:all:
     desc: Run all API tests (server must be running)
