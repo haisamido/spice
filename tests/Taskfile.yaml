@@ -249,7 +249,7 @@ tasks:
       - curl -sf -X POST {{.API_BASE}}/parse -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
       # Propagate TLE
       - echo "Testing TLE propagate..."
-      - curl -sf -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00" -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
+      - curl -sf -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&output_type=json" -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
       # Time conversions
       - echo "Testing UTC to ET..."
       - curl -sf "{{.API_BASE}}/time/utc-to-et?utc=2024-01-15T12:00:00" | jq .
@@ -264,7 +264,7 @@ tasks:
       - curl -sf {{.MODELS_BASE}}/wgs/wgs84 | jq .
       # Propagate with WGS-84
       - echo "Testing propagate with WGS-84..."
-      - curl -sf -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&wgs=wgs84" -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
+      - curl -sf -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&wgs=wgs84&output_type=json" -H "Content-Type:application/json" -d '{{.TLE_BODY}}' | jq .
       - echo "=== All CI tests passed ==="
 
   api:all:
