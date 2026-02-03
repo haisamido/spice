@@ -16,7 +16,12 @@ SPICE SGP4 is a REST API service that provides satellite orbit propagation using
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Express.js Server                            │
 │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
-│  │ Request Logger│  │  Swagger UI   │  │  API Routes   │       │
+│  │  Compression  │  │ Request Logger│  │  Swagger UI   │       │
+│  │    (gzip)     │  │               │  │               │       │
+│  └───────────────┘  └───────────────┘  └───────────────┘       │
+│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
+│  │  API Routes   │  │  HTTP Cache   │  │ JSON Streaming│       │
+│  │               │  │ (ETag/304)    │  │               │       │
 │  └───────────────┘  └───────────────┘  └───────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -294,6 +299,46 @@ datetime,et,x,y,z,vx,vy,vz
 }
 ```
 
+## Performance Optimizations
+
+### Response Compression
+
+All responses are automatically compressed using gzip via the `compression` middleware, reducing transfer sizes by 60-80% for typical payloads.
+
+### HTTP Caching
+
+The propagate endpoint implements HTTP caching:
+
+- **ETag**: Generated from request parameters (t0, tf, step, unit, model, body)
+- **Cache-Control**: `public, max-age=3600` (1 hour)
+- **304 Not Modified**: Returned when client sends matching `If-None-Match` header
+
+```
+Client Request:
+If-None-Match: "abc123..."
+
+Server Response (cache hit):
+HTTP/1.1 304 Not Modified
+```
+
+### JSON Streaming
+
+Large JSON responses are streamed incrementally using `res.write()` for O(1) memory usage instead of buffering the entire response:
+
+```
+res.write('{"states":[')
+for each state:
+    res.write(JSON.stringify(state))
+res.write('],"metadata":...}')
+res.end()
+```
+
+This prevents memory exhaustion when returning up to 1.2 million state vectors.
+
+### TXT Batching
+
+TXT output uses configurable batch sizes (default: 1,209 rows per flush) to balance memory usage with I/O efficiency.
+
 ## Container Architecture
 
 ```mermaid
@@ -325,6 +370,24 @@ graph TB
         L --> M[Final Image]
     end
 ```
+
+## CI/CD Pipeline
+
+### GitHub Actions
+
+| Workflow | Concurrency | Description |
+|----------|-------------|-------------|
+| CI | `cancel-in-progress: true` | New commits cancel old test runs for faster feedback |
+| Publish | `cancel-in-progress: false` | Builds queue to prevent partial deployments |
+
+### GitLab CI
+
+| Job | Interruptible | Description |
+|-----|---------------|-------------|
+| build | `true` | Can be cancelled by newer pipelines |
+| test:unit | `true` | Can be cancelled by newer pipelines |
+| test:api | `true` | Can be cancelled by newer pipelines |
+| publish | `false` | Completes to prevent partial deployments |
 
 ## Data Flow
 
