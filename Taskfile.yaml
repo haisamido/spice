@@ -67,7 +67,7 @@ tasks:
       - "{{.CONTAINER_BIN}} run --rm {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} node examples/node-example.js"
 
   container:start:
-    desc: Build and start the REST API server (detached)
+    desc: "START HERE: Build and start the REST API server (detached)"
     cmds:
       - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose up -d --build"
       - echo "Waiting for server to start..."
@@ -77,6 +77,16 @@ tasks:
       - echo "  task container:logs         - View logs"
       - echo "  task container:logs:follow  - Follow logs"
       - echo "  task container:stop         - Stop server"
+
+  container:run:
+    desc: Alias for container:start
+    cmds:
+      - task: container:start
+
+  container:up:
+    desc: Alias for container:start
+    cmds:
+      - task: container:start
 
   container:start:pull:
     desc: Pull remote image and start the REST API server (detached)
@@ -96,6 +106,11 @@ tasks:
     desc: Stop and remove the REST API server container
     cmds:
       - "{{.CONTAINER_BIN}} compose down -v"
+
+  container:down:
+    desc: Alias for container:stop
+    cmds:
+      - task: container:stop
 
   container:restart:
     desc: Stop and restart the REST API server
