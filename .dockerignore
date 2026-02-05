@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Node
+node_modules
+npm-debug.log*
+
+# Build artifacts (rebuilt in container)
+dist
+
+# Documentation (doesn't affect build)
+*.md
+docs
+LICENSE
+
+# CI/CD configuration
+.github
+.gitlab-ci.yml
+Taskfile.yaml
+
+# Test results and coverage
+coverage
+*.log
+
+# Docker files (prevent recursive context)
+Containerfile
+Dockerfile
+.dockerignore
+compose.yaml
+docker-compose*.yml
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude/AI
+.claude

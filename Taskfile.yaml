@@ -17,14 +17,23 @@ vars:
   CONTAINER_BIN: docker
   CONTAINER_FILE: Containerfile
   CONTAINER_CONTEXT: .
+  COMPOSE_FILE: compose.yaml
+
   CONTAINER_IMAGE: spice-builder
   CONTAINER_TAG: latest
   CONTAINER_NAME: spice-api
   CONTAINER_NAME_TEST: spice-api-test
+
+  CONTAINER_HOST: localhost
   COMPOSE_SERVICE: spice-api
+
   SERVICE_HOST_PORT: 50000
   SERVICE_PORT: 50000
-  API_BASE: http://localhost:{{.SERVICE_HOST_PORT}}/api/spice/sgp4
+  
+  BASE: http://{{.CONTAINER_HOST}}:{{.SERVICE_HOST_PORT}}
+  UI_BASE: http://{{.CONTAINER_HOST}}:{{.SERVICE_HOST_PORT}}/ui
+  API_BASE: http://{{.CONTAINER_HOST}}:{{.SERVICE_HOST_PORT}}/api/spice/sgp4
+
   # Remote image settings
   REMOTE_REGISTRY: ghcr.io/haisamido
   REMOTE_IMAGE: spice
@@ -40,7 +49,7 @@ tasks:
   container:build:
     desc: Build the container image locally (WASM + npm + TypeScript)
     cmds:
-      - "{{.CONTAINER_BIN}} compose build {{.COMPOSE_SERVICE}}"
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} build {{.COMPOSE_SERVICE}}"
 
   container:pull:
     desc: Pull remote container image from registry
@@ -69,7 +78,7 @@ tasks:
   container:start:
     desc: "START HERE: Build and start the REST API server (detached)"
     cmds:
-      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose up -d --build"
+      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} up -d --build"
       - echo "Waiting for server to start..."
       - sleep 3
       - echo ""
@@ -93,7 +102,7 @@ tasks:
     deps:
       - container:pull
     cmds:
-      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose up -d"
+      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} up -d"
       - echo "Waiting for server to start..."
       - sleep 3
       - echo ""
@@ -105,7 +114,7 @@ tasks:
   container:stop:
     desc: Stop and remove the REST API server container
     cmds:
-      - "{{.CONTAINER_BIN}} compose down -v"
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} down -v"
 
   container:down:
     desc: Alias for container:stop
@@ -121,12 +130,12 @@ tasks:
   container:logs:
     desc: View logs from the running REST API server
     cmds:
-      - "{{.CONTAINER_BIN}} compose logs {{.COMPOSE_SERVICE}} {{.CLI_ARGS}}"
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} logs {{.COMPOSE_SERVICE}} {{.CLI_ARGS}}"
 
   container:logs:follow:
     desc: Follow logs from the running REST API server
     cmds:
-      - "{{.CONTAINER_BIN}} compose logs -f {{.COMPOSE_SERVICE}}"
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} logs -f {{.COMPOSE_SERVICE}}"
 
   container:shell:
     desc: Open a shell in the container build environment
