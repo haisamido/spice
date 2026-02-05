@@ -14,34 +14,78 @@ SPICE SGP4 is a REST API service that provides satellite orbit propagation using
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Express.js Server                            │
+│                    Express.js Server (Main Thread)              │
 │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
 │  │  Compression  │  │ Request Logger│  │  Swagger UI   │       │
 │  │    (gzip)     │  │               │  │               │       │
 │  └───────────────┘  └───────────────┘  └───────────────┘       │
 │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
-│  │  API Routes   │  │  HTTP Cache   │  │ JSON Streaming│       │
-│  │               │  │ (ETag/304)    │  │               │       │
+│  │  API Routes   │  │  HTTP Cache   │  │  Worker Pool  │       │
+│  │               │  │ (ETag/304)    │  │   Manager     │       │
 │  └───────────────┘  └───────────────┘  └───────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     SGP4 Module (TypeScript)                    │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
-│  │  TLE Parser   │  │  Propagator   │  │ Time Converter│       │
-│  └───────────────┘  └───────────────┘  └───────────────┘       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    CSPICE WASM Module                           │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐       │
-│  │  SGP4 Core    │  │ Leapseconds   │  │  Geophysical  │       │
-│  │  Algorithm    │  │   Kernel      │  │   Constants   │       │
-│  └───────────────┘  └───────────────┘  └───────────────┘       │
-└─────────────────────────────────────────────────────────────────┘
+            ┌─────────────────┼─────────────────┐
+            │                 │                 │
+            ▼                 ▼                 ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│   Worker 1    │   │   Worker 2    │   │   Worker N    │
+│  ┌─────────┐  │   │  ┌─────────┐  │   │  ┌─────────┐  │
+│  │  SGP4   │  │   │  │  SGP4   │  │   │  │  SGP4   │  │
+│  │  WASM   │  │   │  │  WASM   │  │   │  │  WASM   │  │
+│  │  64MB   │  │   │  │  64MB   │  │   │  │  64MB   │  │
+│  └─────────┘  │   │  └─────────┘  │   │  └─────────┘  │
+└───────────────┘   └───────────────┘   └───────────────┘
+  (independent)       (independent)       (independent)
 ```
+
+## Worker Pool Architecture
+
+The server uses Node.js `worker_threads` to parallelize SGP4 propagation requests. Each worker has its own independent WASM instance, eliminating race conditions and enabling multi-core utilization.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Main Thread                                  │
+│  ┌──────────┐    ┌────────────────┐    ┌─────────────────┐      │
+│  │ Express  │───▶│  Worker Pool   │───▶│  Task Queue     │      │
+│  │ Server   │    │  Manager       │    │  (pending)      │      │
+│  └──────────┘    └────────────────┘    └─────────────────┘      │
+│                         │                                        │
+└─────────────────────────┼────────────────────────────────────────┘
+                          │ postMessage / on('message')
+    ┌─────────────────────┼─────────────────────┐
+    ▼                     ▼                     ▼
+┌─────────┐         ┌─────────┐         ┌─────────┐
+│ Worker 1│         │ Worker 2│         │ Worker N│
+│ ┌─────┐ │         │ ┌─────┐ │         │ ┌─────┐ │
+│ │SGP4 │ │         │ │SGP4 │ │         │ │SGP4 │ │
+│ │WASM │ │         │ │WASM │ │         │ │WASM │ │
+│ │64MB │ │         │ │64MB │ │         │ │64MB │ │
+│ └─────┘ │         │ └─────┘ │         │ └─────┘ │
+└─────────┘         └─────────┘         └─────────┘
+```
+
+### Benefits
+
+| Aspect | Single-threaded | Worker Pool |
+|--------|-----------------|-------------|
+| Concurrency | Sequential | N workers (CPU cores) |
+| Race conditions | Possible | Eliminated |
+| Request isolation | Shared state | Per-worker state |
+| Memory | ~64MB | ~64MB × N workers |
+| Throughput | ~50-100 req/s | ~500 req/s |
+
+### Configuration
+
+The pool size is configurable via environment variable:
+
+```yaml
+# compose.yaml
+environment:
+  - SGP4_POOL_SIZE=${SGP4_POOL_SIZE:-12}
+```
+
+Optimal concurrency: `PARALLEL = 2 × SGP4_POOL_SIZE`
 
 ## Entity Relationship Diagram
 
@@ -140,50 +184,43 @@ sequenceDiagram
     Server-->>Client: { epoch, elements }
 ```
 
-### TLE Propagation Flow
+### TLE Propagation Flow (Worker Pool)
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Server as Express Server
-    participant Logger as Request Logger
-    participant SGP4 as SGP4 Module
-    participant Models as Models Module
-    participant WASM as CSPICE WASM
+    participant Pool as Worker Pool
+    participant Worker as Worker Thread
+    participant WASM as SGP4 WASM
 
     Client->>Server: POST /api/spice/sgp4/propagate
-    Server->>Logger: Log request
+    Server->>Server: Validate request, parse TLE
 
-    alt Model specified
-        Server->>Models: getWgsConstants(modelName)
-        Models-->>Server: GeophysicalConstants
-        Server->>SGP4: setGeophysicalConstants()
-        SGP4->>WASM: sgp4_set_geophs()
+    Server->>Pool: propagate(tle, times, model)
+    Pool->>Pool: Find available worker or queue task
+
+    Pool->>Worker: postMessage(PropagateTask)
+    Worker->>WASM: setGeophysicalConstants(model)
+    Worker->>WASM: parseTLE(line1, line2)
+
+    loop For each time step
+        Worker->>WASM: propagate(tle, et)
+        WASM-->>Worker: position, velocity
     end
 
-    Server->>SGP4: parseTLE(line1, line2)
-    SGP4->>WASM: sgp4_parse_tle()
-    WASM-->>SGP4: TLE object
+    Worker-->>Pool: postMessage(PropagateResult)
+    Pool-->>Server: Promise resolved with states[]
 
-    alt UTC string provided
-        Server->>SGP4: utcToET(utcString)
-        SGP4->>WASM: sgp4_utc_to_et()
-        WASM-->>SGP4: ephemerisTime
-    end
-
-    alt minutes_from_epoch flag
-        Server->>SGP4: propagateMinutes(tle, minutes)
-        SGP4->>WASM: sgp4_propagate_minutes()
-    else ET or default
-        Server->>SGP4: propagate(tle, et)
-        SGP4->>WASM: sgp4_propagate()
-    end
-
-    WASM-->>SGP4: position, velocity
-    SGP4-->>Server: StateVector
-    Server->>Logger: Log response
-    Server-->>Client: { position, velocity, epoch, model }
+    Server-->>Client: { states, epoch, model, count }
 ```
+
+**Key Points:**
+
+- Each worker has its own isolated WASM instance
+- Workers set geophysical constants independently (no race conditions)
+- Task queue handles back-pressure when all workers are busy
+- Results are streamed back via message passing
 
 ### Time Conversion Flow
 
@@ -223,19 +260,28 @@ sequenceDiagram
     participant Node as Node.js
     participant Server as Express Server
     participant SGP4 as SGP4 Module
+    participant Pool as Worker Pool
+    participant Workers as Worker Threads
     participant WASM as CSPICE WASM
-    participant FS as Filesystem
 
     Node->>Server: Start server.js
     Server->>SGP4: createSGP4()
     SGP4->>WASM: Load sgp4.wasm
-    WASM->>FS: Load naif0012.tls (leapseconds)
-    FS-->>WASM: Kernel loaded
     WASM-->>SGP4: Module ready
     Server->>SGP4: init()
-    SGP4->>WASM: sgp4_init()
-    WASM-->>SGP4: Initialized
-    SGP4-->>Server: Ready
+    SGP4-->>Server: Main thread ready
+
+    Server->>Pool: initialize()
+    Pool->>Workers: Spawn N workers (SGP4_POOL_SIZE)
+
+    par Worker initialization
+        Workers->>WASM: Each worker loads sgp4.wasm
+        WASM-->>Workers: Independent WASM instances
+    end
+
+    Workers-->>Pool: All workers ready
+    Pool-->>Server: Pool initialized
+
     Server->>Node: Listen on PORT
     Node-->>Server: Server running
 ```
@@ -252,6 +298,7 @@ sequenceDiagram
 | GET | `/api/spice/sgp4/time/utc-to-et` | Convert UTC to Ephemeris Time |
 | GET | `/api/spice/sgp4/time/et-to-utc` | Convert Ephemeris Time to UTC |
 | GET | `/api/spice/sgp4/health` | Health check endpoint |
+| GET | `/api/spice/sgp4/pool/stats` | Worker pool statistics |
 | GET | `/api/models/` | List available geophysical models |
 | GET | `/api/models/wgs/:name` | Get specific WGS model details |
 | GET | `/api/docs` | Interactive Swagger UI documentation |
@@ -300,6 +347,21 @@ datetime,et,x,y,z,vx,vy,vz
 ```
 
 ## Performance Optimizations
+
+### Worker Pool Parallelization
+
+The server uses a pool of worker threads to parallelize SGP4 propagation requests:
+
+- **Multi-core utilization**: N workers process requests concurrently (default: 12)
+- **Isolated WASM instances**: Each worker has independent state, eliminating race conditions
+- **Task queue**: Handles back-pressure when all workers are busy
+- **Throughput**: ~500 req/s with optimal configuration (vs ~50-100 req/s single-threaded)
+
+```bash
+# Check pool statistics
+curl http://localhost:50000/api/spice/sgp4/pool/stats
+# {"poolSize":12,"busyWorkers":0,"availableWorkers":12,"queueLength":0,"pendingTasks":0}
+```
 
 ### Response Compression
 

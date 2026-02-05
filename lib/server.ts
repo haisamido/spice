@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createSGP4, type SGP4Module } from './index.js';
 import { getAllModels, getWgsModel, getWgsConstants, DEFAULT_MODEL } from './models.js';
+import { workerPool } from './worker-pool.js';
 import { OMMData, ommToTLE, tleToOMM, validateOMM } from './omm.js';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
@@ -99,11 +100,15 @@ app.get('/api/openapi.json', (_req: Request, res: Response) => {
   res.json(openapiSpec);
 });
 
-// Initialize SGP4 module
+// Initialize SGP4 module and worker pool
 async function initSGP4(): Promise<void> {
+  // Initialize single module for simple operations (parse, time conversion)
   sgp4 = await createSGP4();
   await sgp4.init();
   console.log('SGP4 module initialized');
+
+  // Initialize worker pool for parallel propagation
+  await workerPool.initialize();
 }
 
 // Error handler middleware
@@ -215,6 +220,9 @@ app.all(
 
     // Parse input based on input_type
     let tle;
+    let tleLine1: string;
+    let tleLine2: string;
+
     if (inputType === 'omm') {
       const omm = body as Partial<OMMData>;
       try {
@@ -224,14 +232,18 @@ app.all(
         return;
       }
       const tleOutput = ommToTLE(omm as OMMData);
-      tle = sgp4.parseTLE(tleOutput.line1, tleOutput.line2);
+      tleLine1 = tleOutput.line1;
+      tleLine2 = tleOutput.line2;
+      tle = sgp4.parseTLE(tleLine1, tleLine2);
     } else {
       const { line1, line2 } = body;
       if (!line1 || !line2) {
         res.status(400).json({ error: 'Missing line1 or line2' });
         return;
       }
-      tle = sgp4.parseTLE(line1, line2);
+      tleLine1 = line1;
+      tleLine2 = line2;
+      tle = sgp4.parseTLE(tleLine1, tleLine2);
     }
 
     // Generate ETag for caching based on request parameters
@@ -318,17 +330,22 @@ app.all(
       return;
     }
 
-    // Stream txt output in batches for better performance
+    // Use worker pool for parallel propagation
+    const result = await workerPool.propagate({
+      tle: { line1: tleLine1, line2: tleLine2 },
+      times: { et0, etf, step: stepSeconds },
+      model: modelName,
+    });
+
+    // Output txt format
     if (outputType === 'txt') {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
 
       let buffer = 'datetime,et,x,y,z,vx,vy,vz\n';
       let count = 0;
 
-      for (let et = et0; et <= etf; et += stepSeconds) {
-        const state = sgp4.propagate(tle, et);
-        const utc = sgp4.etToUTC(et);
-        buffer += `${utc},${et},${state.position.x},${state.position.y},${state.position.z},${state.velocity.vx},${state.velocity.vy},${state.velocity.vz}\n`;
+      for (const s of result.states) {
+        buffer += `${s.datetime},${s.et},${s.position[0]},${s.position[1]},${s.position[2]},${s.velocity[0]},${s.velocity[1]},${s.velocity[2]}\n`;
         count++;
 
         if (count >= batchSize) {
@@ -345,39 +362,18 @@ app.all(
       return;
     }
 
-    // Stream JSON output for O(1) memory usage
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-    // Write opening of JSON object and states array
-    res.write(`{"states":[`);
-
-    let stateCount = 0;
-    let isFirst = true;
-
-    for (let et = et0; et <= etf; et += stepSeconds) {
-      const state = sgp4.propagate(tle, et);
-      const utc = sgp4.etToUTC(et);
-
-      const stateObj = {
-        datetime: utc,
-        et: et,
-        position: [state.position.x, state.position.y, state.position.z],
-        velocity: [state.velocity.vx, state.velocity.vy, state.velocity.vz],
-      };
-
-      // Add comma separator before all but first element
-      if (!isFirst) {
-        res.write(',');
-      }
-      isFirst = false;
-
-      res.write(JSON.stringify(stateObj));
-      stateCount++;
-    }
-
-    // Write closing of states array and metadata
-    res.write(`],"epoch":${tle.epoch},"model":"${modelName}","count":${stateCount},"t0":"${t0}","tf":"${tf}","step":${step},"unit":"${unit}","input_type":"${inputType}"}`);
-    res.end();
+    // Output JSON format
+    res.json({
+      states: result.states,
+      epoch: result.epoch,
+      model: result.model,
+      count: result.states.length,
+      t0,
+      tf,
+      step,
+      unit,
+      input_type: inputType,
+    });
   })
 );
 
@@ -436,7 +432,19 @@ app.get(
  * Health check endpoint
  */
 app.get('/api/spice/sgp4/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', initialized: !!sgp4 });
+  res.json({
+    status: 'ok',
+    initialized: !!sgp4,
+    workerPool: workerPool.isInitialized,
+  });
+});
+
+/**
+ * GET /api/spice/sgp4/pool/stats
+ * Worker pool statistics endpoint
+ */
+app.get('/api/spice/sgp4/pool/stats', (_req: Request, res: Response) => {
+  res.json(workerPool.stats);
 });
 
 // =============================================================================
@@ -579,10 +587,21 @@ initSGP4()
       console.log(`  GET  /api/spice/sgp4/time/utc-to-et - Convert UTC to ET`);
       console.log(`  GET  /api/spice/sgp4/time/et-to-utc - Convert ET to UTC`);
       console.log(`  GET  /api/spice/sgp4/health      - Health check`);
+      console.log(`  GET  /api/spice/sgp4/pool/stats  - Worker pool statistics`);
       console.log(`  GET  /api/models/                - List models`);
       console.log(`  GET  /api/models/wgs/:name       - Get WGS model details`);
       console.log(``);
       console.log(`Press Ctrl+C to stop the server`);
+
+      // Graceful shutdown handler
+      const shutdown = async () => {
+        console.log('\nShutting down...');
+        await workerPool.shutdown();
+        process.exit(0);
+      };
+
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     });
   })
   .catch((err) => {

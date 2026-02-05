@@ -89,31 +89,36 @@ Defined in [tests/Taskfile.yaml](tests/Taskfile.yaml) and included via the root 
 The parallel load test task runs concurrent requests against the propagate endpoint:
 
 ```bash
-# Default: 10 requests with 100 concurrent connections
+# Default: 9534 requests (Starlink constellation), 24 concurrent, 60s step
 task test:api:propagate:tle:t0:tf:txt:parallel
 
-# Custom runs and concurrency
-task test:api:propagate:tle:t0:tf:txt:parallel RUNS=10000 PARALLEL=200
+# Custom parameters
+task test:api:propagate:tle:t0:tf:txt:parallel RUNS=1000 PARALLEL=24 STEP=60
 ```
 
 **Parameters:**
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `RUNS` | 10 | Total number of requests |
-| `PARALLEL` | 100 | Maximum concurrent connections |
+| `RUNS` | 9534 | Total number of requests (Starlink constellation count) |
+| `PARALLEL` | 24 | Concurrent connections (optimal: 2 × SGP4_POOL_SIZE) |
+| `STEP` | 60 | Time step in seconds (60 = 1441 points/request) |
 
 **Output:**
+
 ```
 === Summary ===
 Start time:      2024-01-15 12:00:00.123+00:00
-Stop time:       2024-01-15 12:00:05.456+00:00
-Concurrency:     100
-Total requests:  1000
-Successful:      1000 (HTTP 200)
+Stop time:       2024-01-15 12:00:18.456+00:00
+Concurrency:     24
+Step size:       60s (1441 points/request)
+Total requests:  9534
+Successful:      9534 (HTTP 200)
 Failed:          0
 Response times:  min=0.045s  mean=0.123s  max=0.456s
-Wall time:       5.333s
-Throughput:      187.50 req/s
+Wall time:       18.333s
+Throughput:      520.00 req/s
+Propagations:    13738194 total (749350 prop/s)
 ```
 
 ## API Documentation
@@ -262,7 +267,19 @@ task container:pull PLATFORM=linux/arm64
 
 # Pull specific tag from registry
 task container:start:pull REMOTE_TAG=v1.0.0
+
+# Configure worker pool size (default: 12)
+task container:start SGP4_POOL_SIZE=8
 ```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVICE_HOST_PORT` | 50000 | Host port for the API server |
+| `SGP4_POOL_SIZE` | 12 | Number of worker threads for parallel propagation |
+
+The worker pool enables parallel processing of propagation requests. Each worker has an independent WASM instance (~64MB memory each). Optimal concurrency for load testing is `PARALLEL = 2 × SGP4_POOL_SIZE`.
 
 ## License
 

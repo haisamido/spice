@@ -40,6 +40,8 @@ vars:
   REMOTE_TAG: latest
   PLATFORM: linux/amd64
 
+  SGP4_POOL_SIZE: 12
+
 tasks:
   default:
     desc: Show available tasks

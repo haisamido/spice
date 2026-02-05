@@ -14,6 +14,7 @@ services:
     environment:
       - PORT=${SERVICE_PORT:-50000}
       - GIT_COMMIT=${GIT_COMMIT:-}
+      - SGP4_POOL_SIZE=${SGP4_POOL_SIZE:-12}
     networks:
       - spice-network
     restart: unless-stopped
