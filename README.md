@@ -27,6 +27,17 @@ task container:start
 
 This builds the container image (compiles CSPICE to WASM, installs npm deps, compiles TypeScript) and starts the REST API server in the background at http://localhost:50000. Use `task container:logs` to view output or `task container:stop` to stop.
 
+### Run Both WASM and Native Servers
+
+```bash
+task container:start:both
+```
+
+This starts both servers for performance comparison:
+
+- **WASM Server**: <http://localhost:50000> (CSPICE compiled to WebAssembly)
+- **Native Server**: <http://localhost:50001> (SIMD-optimized native add-on)
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
@@ -44,9 +55,11 @@ task --list
 |------|-------------|
 | `container:build` | Build image locally (WASM + npm + TypeScript) |
 | `container:pull` | Pull remote image from registry |
-| `container:start` | Build and start the REST API server (detached) |
+| `container:start` | Build and start the WASM REST API server (port 50000) |
+| `container:start:both` | Start both WASM (50000) and Native (50001) servers |
 | `container:start:pull` | Pull remote image and start server (detached) |
 | `container:stop` | Stop the running server |
+| `container:stop:both` | Stop both WASM and Native servers |
 | `container:logs` | View server logs |
 | `container:logs:follow` | Follow server logs |
 | `container:test` | Run unit tests |
@@ -65,6 +78,8 @@ Run SGP4 benchmarks directly on the host machine using native CSPICE (not Docker
 | `native:benchmark` | Run single-threaded SGP4 benchmark. Args: `SATS=9534 STEP=60` |
 | `native:build:parallel` | Compile the multi-process native benchmark |
 | `native:benchmark:parallel` | Run parallel SGP4 benchmark (fork). Args: `SATS=9534 STEP=60 WORKERS=12` |
+| `native:build:batch` | Compile the SIMD batch benchmark |
+| `native:benchmark:batch` | Run SIMD vectorized benchmark. Args: `SATS=9534 STEP=60 WORKERS=14` |
 | `native:benchmark:optimal` | Find optimal WORKERS count. Args: `SATS=9534 STEP=60 MAX_WORKERS=16` |
 | `native:clean` | Remove native CSPICE installation and binaries |
 
@@ -77,9 +92,38 @@ task native:benchmark
 # Run parallel benchmark with 8 workers
 task native:benchmark:parallel WORKERS=8
 
+# Run SIMD batch benchmark
+task native:benchmark:batch WORKERS=14
+
 # Find optimal worker count for your system
 task native:benchmark:optimal
 ```
+
+### Benchmark Tasks
+
+Run comprehensive benchmarks comparing all implementations:
+
+| Task | Description |
+|------|-------------|
+| `benchmark:all` | Run all 4 benchmarks (Docker WASM, Docker Native, Host SIMD, Host CSPICE) |
+| `test:api:compare` | Compare WASM vs Native HTTP API performance |
+
+```bash
+# Run all benchmarks (automatically builds dependencies)
+task benchmark:all
+
+# With custom parameters
+task benchmark:all SATS=9534 PARALLEL=14 WORKERS=14
+```
+
+**Benchmark output:**
+
+| Benchmark | Description | Expected Throughput |
+|-----------|-------------|---------------------|
+| Docker WASM (50000) | HTTP + Express + WASM workers | ~750K prop/s |
+| Docker Native (50001) | HTTP + Express + Native SIMD workers | ~5-10M prop/s |
+| Host SIMD Batch | Raw C + SIMD vectorization | ~55M prop/s |
+| Host CSPICE Parallel | Raw C + CSPICE + fork() | ~5M prop/s |
 
 ### API Test Tasks
 

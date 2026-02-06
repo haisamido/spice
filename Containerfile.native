@@ -1,0 +1,75 @@
+# syntax=docker/dockerfile:1.4
+# Dockerfile for building SGP4 Native Addon
+# Compiles the SIMD-optimized SGP4 implementation as a Node.js native addon
+# Uses x86_64 for Linux deployment (AVX2 SIMD optimizations)
+
+# =============================================================================
+# Stage: build - Compile native addon
+# =============================================================================
+FROM --platform=linux/arm64 node:20-bookworm AS build
+
+LABEL maintainer="sgp4-native"
+LABEL description="Native SIMD SGP4 addon for Node.js"
+
+# Install build tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm install
+RUN npm install node-addon-api node-gyp
+
+# Copy source files
+COPY tsconfig.json ./
+COPY src/ ./src/
+COPY lib/ ./lib/
+COPY data/ ./data/
+
+# Build native addon
+WORKDIR /app/src/native-addon
+RUN npx node-gyp configure
+RUN npx node-gyp build
+
+# Move built addon to expected location
+RUN mkdir -p /app/build/Release && \
+    cp build/Release/sgp4_native.node /app/build/Release/
+
+# =============================================================================
+# Stage: final - Runtime image
+# =============================================================================
+FROM --platform=linux/arm64 node:20-bookworm-slim AS final
+
+WORKDIR /app
+
+# Copy from build stage
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/build ./build
+COPY --from=build /app/package*.json ./
+COPY --from=build /app/tsconfig.json ./
+COPY --from=build /app/lib ./lib
+COPY --from=build /app/data ./data
+COPY --from=build /app/src/sgp4_batch.h ./src/
+COPY --from=build /app/src/sgp4_simd.c ./src/
+
+# Compile TypeScript
+RUN npm run build:ts
+
+# Expose port 50001 (native server)
+EXPOSE 50001
+
+# Environment variables
+ENV NATIVE_PORT=50001
+ENV SGP4_POOL_SIZE=12
+ENV NODE_ENV=production
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:50001/api/spice/sgp4/health || exit 1
+
+# Run native server
+CMD ["node", "dist/server-native.js"]

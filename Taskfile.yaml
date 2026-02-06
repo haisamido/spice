@@ -327,11 +327,198 @@ tasks:
           echo ""
           echo "=== Optimal: WORKERS=$BEST_WORKERS ($BEST_THROUGHPUT prop/s) ==="
 
+  native:build:batch:
+    desc: Compile the SIMD batch SGP4 benchmark
+    vars:
+      PWD:
+        sh: pwd
+    cmds:
+      - cmd: |
+          mkdir -p bin
+          echo "Compiling SIMD batch benchmark..."
+          cc -O3 -march=native -o bin/benchmark_native_batch src/benchmark_native_batch.c -lm
+          echo "Built: bin/benchmark_native_batch"
+
+  native:benchmark:batch:
+    desc: Run SIMD batch SGP4 benchmark. Args SATS=9534 STEP=60 WORKERS=1
+    deps:
+      - native:build:batch
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      STEP: '{{.STEP | default "60"}}'
+      WORKERS: '{{.WORKERS | default "1"}}'
+    cmds:
+      - bin/benchmark_native_batch {{.SATS}} {{.STEP}} {{.WORKERS}}
+
+  native:benchmark:compare:
+    desc: Compare CSPICE vs SIMD batch performance
+    deps:
+      - native:build:parallel
+      - native:build:batch
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      STEP: '{{.STEP | default "60"}}'
+      WORKERS: '{{.WORKERS | default "12"}}'
+      KERNELS_DIR: '{{.PWD}}/.cspice/kernels'
+      PWD:
+        sh: pwd
+    env:
+      SPICE_KERNELS: '{{.KERNELS_DIR}}'
+    cmds:
+      - cmd: |
+          echo "=== Performance Comparison (SATS={{.SATS}}, STEP={{.STEP}}, WORKERS={{.WORKERS}}) ==="
+          echo ""
+          echo "--- CSPICE (fork) ---"
+          bin/benchmark_native_mp {{.SATS}} {{.STEP}} {{.WORKERS}}
+          echo ""
+          echo "--- SIMD Batch ---"
+          bin/benchmark_native_batch {{.SATS}} {{.STEP}} {{.WORKERS}}
+
   native:clean:
     desc: Remove native CSPICE installation and binaries
     cmds:
       - rm -rf .cspice bin
       - echo "Removed .cspice and bin directories"
+
+  # ==========================================================================
+  # Native Addon Tasks (Node.js N-API with SIMD)
+  # ==========================================================================
+
+  native:addon:build:
+    desc: Build native SGP4 addon for current platform
+    cmds:
+      - cmd: |
+          echo "Installing node-addon-api..."
+          npm install --save-dev node-addon-api node-gyp
+
+          echo "Building native addon..."
+          cd src/native-addon
+          npx node-gyp configure
+          npx node-gyp build
+
+          echo "Moving addon to build directory..."
+          mkdir -p ../../build/Release
+          cp build/Release/sgp4_native.node ../../build/Release/
+
+          echo "Built: build/Release/sgp4_native.node"
+
+  native:addon:server:
+    desc: Run native addon server on host (port 50001)
+    deps:
+      - native:addon:build
+    cmds:
+      - npx tsx lib/server-native.ts
+    env:
+      NATIVE_PORT: "50001"
+
+  container:build:native:
+    desc: Build native addon container image
+    cmds:
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native build spice-api-native"
+
+  container:start:native:
+    desc: Start native addon server in Docker (port 50001)
+    cmds:
+      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native up -d spice-api-native"
+      - echo "Waiting for server to start..."
+      - sleep 3
+      - echo ""
+      - echo "Native server running at http://localhost:50001"
+      - echo "  task container:logs:native  - View logs"
+      - echo "  task container:stop:native  - Stop server"
+
+  container:stop:native:
+    desc: Stop native addon server container
+    cmds:
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native stop spice-api-native"
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native rm -f spice-api-native"
+
+  container:logs:native:
+    desc: View logs from native addon server
+    cmds:
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native logs spice-api-native {{.CLI_ARGS}}"
+
+  container:start:both:
+    desc: Start both WASM (50000) and Native (50001) servers
+    cmds:
+      - "GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo '-') {{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native up -d"
+      - echo "Waiting for servers to start..."
+      - sleep 5
+      - echo ""
+      - 'echo "WASM server:   http://localhost:50000"'
+      - 'echo "Native server: http://localhost:50001"'
+
+  container:stop:both:
+    desc: Stop both WASM and Native servers
+    cmds:
+      - "{{.CONTAINER_BIN}} compose -f {{.COMPOSE_FILE}} --profile native down -v"
+
+  test:api:compare:
+    desc: Compare WASM vs Native API performance
+    cmds:
+      - cmd: |
+          echo "=== Performance Comparison ==="
+          echo ""
+          echo "--- WASM Server (port 50000) ---"
+          task test:api:propagate:tle:t0:tf:txt:parallel SERVICE_HOST_PORT=50000
+          echo ""
+          echo "--- Native Server (port 50001) ---"
+          task test:api:propagate:tle:t0:tf:txt:parallel SERVICE_HOST_PORT=50001
+
+  benchmark:all:
+    desc: Run all benchmarks (Docker HTTP + Host Native). Args SATS=9534 PARALLEL=14 WORKERS=14
+    silent: true
+    deps:
+      - task: container:start:both
+        silent: true
+      - task: native:build:batch
+        silent: true
+      - task: native:build:parallel
+        silent: true
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      PARALLEL: '{{.PARALLEL | default "14"}}'
+      WORKERS: '{{.WORKERS | default "14"}}'
+    cmds:
+      - cmd: |
+          echo "╔══════════════════════════════════════════════════════════════════╗"
+          echo "║              COMPREHENSIVE SGP4 BENCHMARK SUITE                  ║"
+          echo "╠══════════════════════════════════════════════════════════════════╣"
+          echo "║  SATS={{.SATS}}  PARALLEL={{.PARALLEL}}  WORKERS={{.WORKERS}}                          ║"
+          echo "╚══════════════════════════════════════════════════════════════════╝"
+          echo ""
+      - cmd: |
+          echo "┌──────────────────────────────────────────────────────────────────┐"
+          echo "│  1/4  Docker WASM Server (port 50000)                            │"
+          echo "│       HTTP + Express + WASM Worker Pool                          │"
+          echo "└──────────────────────────────────────────────────────────────────┘"
+          task test:api:propagate:tle:t0:tf:txt:parallel SERVICE_HOST_PORT=50000 SATS={{.SATS}} PARALLEL={{.PARALLEL}}
+          echo ""
+      - cmd: |
+          echo "┌──────────────────────────────────────────────────────────────────┐"
+          echo "│  2/4  Docker Native Server (port 50001)                          │"
+          echo "│       HTTP + Express + Native SIMD Worker Pool                   │"
+          echo "└──────────────────────────────────────────────────────────────────┘"
+          task test:api:propagate:tle:t0:tf:txt:parallel SERVICE_HOST_PORT=50001 SATS={{.SATS}} PARALLEL={{.PARALLEL}}
+          echo ""
+      - cmd: |
+          echo "┌──────────────────────────────────────────────────────────────────┐"
+          echo "│  3/4  Host Native SIMD Batch (no HTTP)                           │"
+          echo "│       Raw C + SIMD vectorized propagation                        │"
+          echo "└──────────────────────────────────────────────────────────────────┘"
+          task native:benchmark:batch SATS={{.SATS}} WORKERS={{.WORKERS}}
+          echo ""
+      - cmd: |
+          echo "┌──────────────────────────────────────────────────────────────────┐"
+          echo "│  4/4  Host Native CSPICE Parallel (no HTTP)                      │"
+          echo "│       Raw C + CSPICE + fork() parallelism                        │"
+          echo "└──────────────────────────────────────────────────────────────────┘"
+          task native:benchmark:parallel SATS={{.SATS}} WORKERS={{.WORKERS}}
+          echo ""
+      - cmd: |
+          echo "╔══════════════════════════════════════════════════════════════════╗"
+          echo "║                      BENCHMARK COMPLETE                          ║"
+          echo "╚══════════════════════════════════════════════════════════════════╝"
 
   container:test:api:
     desc: Start server, run all API tests, then stop

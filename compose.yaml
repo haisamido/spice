@@ -18,3 +18,21 @@ services:
     networks:
       - spice-network
     restart: unless-stopped
+
+  spice-api-native:
+    build:
+      context: ${CONTAINER_CONTEXT:-.}
+      dockerfile: Containerfile.native
+    image: ${CONTAINER_IMAGE:-spice-builder}:native
+    container_name: ${CONTAINER_NAME_NATIVE:-spice-api-native}
+    ports:
+      - "${NATIVE_HOST_PORT:-50001}:50001"
+    environment:
+      - NATIVE_PORT=50001
+      - GIT_COMMIT=${GIT_COMMIT:-}
+      - SGP4_POOL_SIZE=${SGP4_POOL_SIZE:-12}
+    networks:
+      - spice-network
+    restart: unless-stopped
+    profiles:
+      - native

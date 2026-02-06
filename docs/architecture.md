@@ -2,9 +2,50 @@
 
 ## Overview
 
-SPICE SGP4 is a REST API service that provides satellite orbit propagation using the SGP4 algorithm implemented via NASA/JPL NAIF CSPICE compiled to WebAssembly.
+SPICE SGP4 is a REST API service that provides satellite orbit propagation using the SGP4 algorithm. Two implementations are available:
 
-## System Architecture
+- **WASM Server** (port 50000): CSPICE compiled to WebAssembly - portable, runs anywhere
+- **Native Server** (port 50001): SIMD-optimized native add-on - maximum performance
+
+## Dual-Server Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Client                                          │
+│                   (Browser, curl, Application)                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    │                               │
+                    ▼                               ▼
+┌───────────────────────────────────┐ ┌───────────────────────────────────────┐
+│     WASM Server (port 50000)      │ │     Native Server (port 50001)        │
+│  ┌─────────────────────────────┐  │ │  ┌─────────────────────────────────┐  │
+│  │     Express.js + Workers    │  │ │  │     Express.js + Workers        │  │
+│  └─────────────────────────────┘  │ │  └─────────────────────────────────┘  │
+│              │                    │ │              │                        │
+│  ┌───────────┼───────────┐       │ │  ┌───────────┼───────────┐            │
+│  ▼           ▼           ▼       │ │  ▼           ▼           ▼            │
+│ ┌────┐     ┌────┐     ┌────┐     │ │ ┌────┐     ┌────┐     ┌────┐         │
+│ │WASM│     │WASM│     │WASM│     │ │ │SIMD│     │SIMD│     │SIMD│         │
+│ │64MB│     │64MB│     │64MB│     │ │ │ C  │     │ C  │     │ C  │         │
+│ └────┘     └────┘     └────┘     │ │ └────┘     └────┘     └────┘         │
+│                                   │ │                                       │
+│  ~750K prop/s                     │ │  ~5-10M prop/s (Docker)               │
+│                                   │ │  ~55M prop/s (Host ARM NEON)          │
+└───────────────────────────────────┘ └───────────────────────────────────────┘
+```
+
+### Implementation Comparison
+
+| Aspect | WASM Server | Native Server |
+|--------|-------------|---------------|
+| Port | 50000 | 50001 |
+| Implementation | CSPICE → WebAssembly | C + SIMD (AVX2/NEON) |
+| Portability | Any platform | Platform-specific binary |
+| Performance | ~750K prop/s | ~5-55M prop/s |
+| Memory per worker | ~64MB | ~1MB |
+| Build dependency | Emscripten | node-gyp |
+
+## System Architecture (WASM Server)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
