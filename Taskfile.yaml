@@ -146,6 +146,193 @@ tasks:
     cmds:
       - "{{.CONTAINER_BIN}} run --rm -it {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} bash"
 
+  container:benchmark:
+    desc: Run SGP4 WASM benchmark (no HTTP overhead). Args SATS=9534 STEP=60
+    deps:
+      - container:build
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      STEP: '{{.STEP | default "60"}}'
+    cmds:
+      - "{{.CONTAINER_BIN}} run --rm {{.CONTAINER_IMAGE}}:{{.CONTAINER_TAG}} npx tsx lib/benchmark.ts {{.SATS}} {{.STEP}}"
+
+  # ==========================================================================
+  # Native (Host) Tasks - Run directly on host machine, not in Docker
+  # ==========================================================================
+
+  native:setup:
+    desc: Download and extract CSPICE toolkit for native compilation
+    vars:
+      CSPICE_DIR: '{{.PWD}}/.cspice'
+      KERNELS_DIR: '{{.PWD}}/.cspice/kernels'
+      PWD:
+        sh: pwd
+    cmds:
+      - cmd: |
+          if [ -d "{{.CSPICE_DIR}}/cspice" ]; then
+            echo "CSPICE already installed at {{.CSPICE_DIR}}/cspice"
+            exit 0
+          fi
+
+          echo "Detecting platform..."
+          ARCH=$(uname -m)
+          OS=$(uname -s)
+
+          if [ "$OS" = "Darwin" ]; then
+            if [ "$ARCH" = "arm64" ]; then
+              URL="https://naif.jpl.nasa.gov/pub/naif/toolkit/C/MacM1_OSX_clang_64bit/packages/cspice.tar.Z"
+            else
+              URL="https://naif.jpl.nasa.gov/pub/naif/toolkit/C/MacIntel_OSX_AppleC_64bit/packages/cspice.tar.Z"
+            fi
+          elif [ "$OS" = "Linux" ]; then
+            URL="https://naif.jpl.nasa.gov/pub/naif/toolkit/C/PC_Linux_GCC_64bit/packages/cspice.tar.Z"
+          else
+            echo "Unsupported OS: $OS"
+            exit 1
+          fi
+
+          echo "Downloading CSPICE from $URL..."
+          mkdir -p "{{.CSPICE_DIR}}"
+          curl -sL -o "{{.CSPICE_DIR}}/cspice.tar.Z" "$URL"
+
+          echo "Extracting..."
+          cd "{{.CSPICE_DIR}}" && tar -xzf cspice.tar.Z && rm cspice.tar.Z
+
+          echo "Downloading leapseconds kernel..."
+          mkdir -p "{{.KERNELS_DIR}}"
+          curl -sL -o "{{.KERNELS_DIR}}/naif0012.tls" \
+            https://naif.jpl.nasa.gov/pub/naif/generic_kernels/lsk/naif0012.tls
+
+          echo "CSPICE installed at {{.CSPICE_DIR}}/cspice"
+    status:
+      - test -d "{{.PWD}}/.cspice/cspice"
+
+  native:build:
+    desc: Compile the native SGP4 benchmark
+    deps:
+      - native:setup
+    vars:
+      CSPICE_DIR: '{{.PWD}}/.cspice/cspice'
+      PWD:
+        sh: pwd
+    cmds:
+      - cmd: |
+          mkdir -p bin
+          echo "Compiling native benchmark..."
+          cc -O3 -o bin/benchmark_native src/benchmark_native.c \
+            -I{{.CSPICE_DIR}}/include \
+            {{.CSPICE_DIR}}/lib/cspice.a -lm
+          echo "Built: bin/benchmark_native"
+
+  native:benchmark:
+    desc: Run SGP4 native benchmark (compiled on host). Args SATS=9534 STEP=60
+    deps:
+      - native:build
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      STEP: '{{.STEP | default "60"}}'
+      KERNELS_DIR: '{{.PWD}}/.cspice/kernels'
+      PWD:
+        sh: pwd
+    cmds:
+      - bin/benchmark_native {{.SATS}} {{.STEP}}
+    env:
+      SPICE_KERNELS: '{{.KERNELS_DIR}}'
+
+  native:build:parallel:
+    desc: Compile the multi-process native SGP4 benchmark
+    deps:
+      - native:setup
+    vars:
+      CSPICE_DIR: '{{.PWD}}/.cspice/cspice'
+      PWD:
+        sh: pwd
+    cmds:
+      - cmd: |
+          mkdir -p bin
+          echo "Compiling multi-process native benchmark..."
+          cc -O3 -o bin/benchmark_native_mp src/benchmark_native_mp.c \
+            -I{{.CSPICE_DIR}}/include \
+            {{.CSPICE_DIR}}/lib/cspice.a -lm
+          echo "Built: bin/benchmark_native_mp"
+
+  native:benchmark:parallel:
+    desc: Run parallel SGP4 native benchmark (fork). Args SATS=9534 STEP=60 WORKERS=4
+    deps:
+      - native:build:parallel
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      STEP: '{{.STEP | default "60"}}'
+      WORKERS: '{{.WORKERS | default "12"}}'
+      KERNELS_DIR: '{{.PWD}}/.cspice/kernels'
+      PWD:
+        sh: pwd
+    cmds:
+      - bin/benchmark_native_mp {{.SATS}} {{.STEP}} {{.WORKERS}}
+    env:
+      SPICE_KERNELS: '{{.KERNELS_DIR}}'
+
+  native:benchmark:optimal:
+    desc: Find optimal WORKERS count for parallel benchmark. Args SATS=9534 STEP=60 MAX_WORKERS=16
+    deps:
+      - native:build:parallel
+    vars:
+      SATS: '{{.SATS | default "9534"}}'
+      STEP: '{{.STEP | default "60"}}'
+      MAX_WORKERS: '{{.MAX_WORKERS | default "16"}}'
+      KERNELS_DIR: '{{.PWD}}/.cspice/kernels'
+      PWD:
+        sh: pwd
+    env:
+      SPICE_KERNELS: '{{.KERNELS_DIR}}'
+    cmds:
+      - cmd: |
+          echo "Finding optimal WORKERS for native:benchmark:parallel"
+          echo "  SATS: {{.SATS}}"
+          echo "  STEP: {{.STEP}}"
+          echo "  Testing WORKERS: 1 to {{.MAX_WORKERS}}"
+          echo ""
+          echo "WORKERS | Throughput (prop/s) | Wall Time (s) | Speedup"
+          echo "--------|--------------------:|---------------:|--------:"
+
+          BASELINE=0
+          BEST_WORKERS=1
+          BEST_THROUGHPUT=0
+
+          for W in $(seq 1 {{.MAX_WORKERS}}); do
+            OUTPUT=$(bin/benchmark_native_mp {{.SATS}} {{.STEP}} $W 2>&1)
+            THROUGHPUT=$(echo "$OUTPUT" | grep "Throughput:" | awk '{print $2}')
+            WALL_TIME=$(echo "$OUTPUT" | grep "Wall time:" | awk '{print $3}' | tr -d 's')
+
+            if [ "$W" -eq 1 ]; then
+              BASELINE=$THROUGHPUT
+            fi
+
+            # Calculate speedup (integer math with 2 decimal places)
+            if [ "$BASELINE" -gt 0 ]; then
+              SPEEDUP=$(awk "BEGIN {printf \"%.2f\", $THROUGHPUT / $BASELINE}")
+            else
+              SPEEDUP="1.00"
+            fi
+
+            printf "%7d | %18s | %13s | %6sx\n" "$W" "$THROUGHPUT" "$WALL_TIME" "$SPEEDUP"
+
+            # Track best
+            if [ "$THROUGHPUT" -gt "$BEST_THROUGHPUT" ]; then
+              BEST_THROUGHPUT=$THROUGHPUT
+              BEST_WORKERS=$W
+            fi
+          done
+
+          echo ""
+          echo "=== Optimal: WORKERS=$BEST_WORKERS ($BEST_THROUGHPUT prop/s) ==="
+
+  native:clean:
+    desc: Remove native CSPICE installation and binaries
+    cmds:
+      - rm -rf .cspice bin
+      - echo "Removed .cspice and bin directories"
+
   container:test:api:
     desc: Start server, run all API tests, then stop
     cmds:

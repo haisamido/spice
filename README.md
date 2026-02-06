@@ -54,6 +54,33 @@ task --list
 | `container:shell` | Open shell in build environment |
 | `container:expunge` | Remove all containers and images |
 
+### Native (Host) Tasks
+
+Run SGP4 benchmarks directly on the host machine using native CSPICE (not Docker).
+
+| Task | Description |
+|------|-------------|
+| `native:setup` | Download and extract CSPICE toolkit for native compilation |
+| `native:build` | Compile the native SGP4 benchmark |
+| `native:benchmark` | Run single-threaded SGP4 benchmark. Args: `SATS=9534 STEP=60` |
+| `native:build:parallel` | Compile the multi-process native benchmark |
+| `native:benchmark:parallel` | Run parallel SGP4 benchmark (fork). Args: `SATS=9534 STEP=60 WORKERS=12` |
+| `native:benchmark:optimal` | Find optimal WORKERS count. Args: `SATS=9534 STEP=60 MAX_WORKERS=16` |
+| `native:clean` | Remove native CSPICE installation and binaries |
+
+**Note:** CSPICE is not thread-safe due to global state. The parallel benchmark uses `fork()` to create independent processes, each with its own CSPICE memory space.
+
+```bash
+# Run single-threaded benchmark
+task native:benchmark
+
+# Run parallel benchmark with 8 workers
+task native:benchmark:parallel WORKERS=8
+
+# Find optimal worker count for your system
+task native:benchmark:optimal
+```
+
 ### API Test Tasks
 
 Defined in [tests/Taskfile.yaml](tests/Taskfile.yaml) and included via the root Taskfile.
@@ -93,14 +120,14 @@ The parallel load test task runs concurrent requests against the propagate endpo
 task test:api:propagate:tle:t0:tf:txt:parallel
 
 # Custom parameters
-task test:api:propagate:tle:t0:tf:txt:parallel RUNS=1000 PARALLEL=24 STEP=60
+task test:api:propagate:tle:t0:tf:txt:parallel SATS=1000 PARALLEL=24 STEP=60
 ```
 
 **Parameters:**
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `RUNS` | 9534 | Total number of requests (Starlink constellation count) |
+| `SATS` | 9534 | Total number of requests (Starlink constellation count) |
 | `PARALLEL` | 24 | Concurrent connections (optimal: 2 × SGP4_POOL_SIZE) |
 | `STEP` | 60 | Time step in seconds (60 = 1441 points/request) |
 

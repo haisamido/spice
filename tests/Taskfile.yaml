@@ -131,16 +131,16 @@ tasks:
       - echo "http://{{.API_HOST}}:{{.SERVICE_HOST_PORT}}/api/spice/sgp4/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step=60&unit=sec&output_type=txt&body=%7B%22line1%22%3A%221%2025544U%2098067A%20%20%2024015.50000000%20%20.00016717%20%2000000-0%20%2010270-3%200%20%209025%22%2C%22line2%22%3A%222%2025544%20%2051.6400%20208.9163%200006703%20%2030.0825%20330.0579%2015.49560830%20%20%20%2019%22%7D"
 
   api:propagate:tle:t0:tf:txt:parallel:
-    desc: Run propagate POST in parallel (RUNS=total, PARALLEL=concurrency, STEP=seconds)
+    desc: Run propagate POST in parallel (SATS=total, PARALLEL=concurrency, STEP=seconds)
     vars:
       # Optimal: PARALLEL = 2 × SGP4_POOL_SIZE (default pool=12, so parallel=24)
-      RUNS: '{{.RUNS | default "9534"}}' # Starlink spacecraft
+      SATS: '{{.SATS | default "9534"}}' # Starlink spacecraft
       PARALLEL: '{{.PARALLEL | default "24"}}'
       STEP: '{{.STEP | default "60"}}'
       # Compact TLE JSON for POST body (no newlines)
       TLE_JSON: '{"line1":"1 25544U 98067A   24015.50000000  .00016717  00000-0  10270-3 0  9025","line2":"2 25544  51.6400 208.9163 0006703  30.0825 330.0579 15.49560830    19"}'
     cmds:
-      - echo "=== Running {{.RUNS}} requests ({{.PARALLEL}} concurrent, step={{.STEP}}s) ==="
+      - echo "=== Running {{.SATS}} requests ({{.PARALLEL}} concurrent, step={{.STEP}}s) ==="
       - cmd: |
           # Health check - verify server is responding
           if ! curl -sf --connect-timeout 3 {{.API_BASE}}/health > /dev/null 2>&1; then
@@ -154,7 +154,7 @@ tasks:
           START_TIME=$(date -u '+%Y-%m-%d %H:%M:%S.%3N+00:00')
           START=$(date +%s.%N)
 
-          seq 1 {{.RUNS}} | xargs -P {{.PARALLEL}} -I {} curl -s --connect-timeout 5 --max-time 60 -o /dev/null -w "%{http_code} %{time_total}\n" -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step={{.STEP}}&unit=sec&output_type=txt" -H "Content-Type:application/json" -d '{{.TLE_JSON}}' >> "$TMPFILE"
+          seq 1 {{.SATS}} | xargs -P {{.PARALLEL}} -I {} curl -s --connect-timeout 5 --max-time 60 -o /dev/null -w "%{http_code} %{time_total}\n" -X POST "{{.API_BASE}}/propagate?t0=2024-01-15T12:00:00&tf=2024-01-16T12:00:00&step={{.STEP}}&unit=sec&output_type=txt" -H "Content-Type:application/json" -d '{{.TLE_JSON}}' >> "$TMPFILE"
 
           END=$(date +%s.%N)
           STOP_TIME=$(date -u '+%Y-%m-%d %H:%M:%S.%3N+00:00')

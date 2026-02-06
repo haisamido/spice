@@ -14,5 +14,11 @@ node_modules/
 # Claude
 .claude/
 
+# Native CSPICE installation
+.cspice/
+
+# Local binaries
+bin/
+
 # OS files
 .DS_Store
